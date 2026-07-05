@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/unit tests/integration -x -q --no-header)",
+      "Bash(python -m pytest tests/unit tests/integration -q --no-header)",
+      "Bash(python examples/raw_pytorch.py)",
+      "Bash(python -c \"import sys; sys.stdout.reconfigure\\(encoding=''''utf-8''''\\)\")",
+      "Bash(python -m sysplug --help)",
+      "Bash(python -m sysplug version)",
+      "Bash(python -m sysplug hardware)",
+      "Bash(python examples/rlhf_ppo.py)",
+      "Bash(python examples/dpo_custom_loop.py)",
+      "Bash(python examples/deepspeed_example.py)",
+      "Bash(python -m ruff check sysplug/ --select E,F,W,I)",
+      "Bash(python -m ruff check sysplug/ --select E,F,W,I --fix --quiet)",
+      "Bash(grep -E \"\\(^total|^d|__init__|\\\\.py$\\)\")",
+      "Bash(python -m pytest tests/unit/test_memory_model_numeric.py tests/unit/test_stability_precise.py tests/unit/test_solver_comprehensive.py -q --no-header)",
+      "Bash(python -m pytest tests/unit/test_solver_comprehensive.py::TestStabilityWarnings::test_no_spurious_warnings_normal_config -q --no-header -s)",
+      "Bash(python -m pytest tests/unit/test_solver_comprehensive.py::TestStabilityWarnings::test_no_spurious_warnings_normal_config -q --no-header -s --no-cov)",
+      "Bash(python -c \"from sysplug.hardware import GPUSnapshot; import inspect; print\\(inspect.signature\\(GPUSnapshot.__init__\\)\\)\")",
+      "Bash(python -m pytest tests/unit/test_memory_model_numeric.py tests/unit/test_stability_precise.py tests/unit/test_solver_comprehensive.py tests/integration/test_advisor_full_pipeline.py tests/integration/test_hf_deep.py tests/real/test_real_computations.py -q --no-header --no-cov)",
+      "Bash(python -m pytest tests/unit/test_memory_model_numeric.py::TestModelNameLookup::test_known_models tests/real/test_real_computations.py::TestScalingRulesMath::test_recommended_rule_sft_small_batch tests/real/test_real_computations.py::TestThroughputModelReal::test_roofline_has_correct_fields --no-cov -q -s)",
+      "Bash(python -c \"from sysplug.utils.scaling_rules import recommended_lr_rule; import inspect; print\\(inspect.signature\\(recommended_lr_rule\\)\\)\")",
+      "Bash(python -c \"from sysplug.throughput_model import ThroughputModel; tm=ThroughputModel\\(\\); print\\([m for m in dir\\(tm\\) if not m.startswith\\(''_''\\)]\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -m pytest tests/integration/test_advisor_full_pipeline.py::TestModelSpecification::test_larger_model_uses_more_memory tests/integration/test_hf_deep.py::TestOnEpochEnd::test_stable_training_no_warning tests/integration/test_advisor_full_pipeline.py::TestTrainingTypes::test_rlhf_small_batch_adds_warning --no-cov -s -q)",
+      "Bash(python -m pytest tests/integration/test_hf_deep.py::TestOnEpochEnd::test_stable_training_no_warning --no-cov -s)",
+      "Bash(python -m pytest tests/ -q --no-header)",
+      "Bash(curl -s http://localhost:8000)",
+      "Bash(python frontend/server.py)",
+      "Bash(curl -s http://localhost:8000/hardware)",
+      "Bash(curl -s -X POST http://localhost:8000/predict -H \"Content-Type: application/json\" -d \"{\"\"model_name\"\":\"\"gpt2\"\",\"\"batch_size\"\":8,\"\"precision\"\":\"\"bf16\"\",\"\"optimizer\"\":\"\"adamw\"\",\"\"gpu_memory_mb\"\":24463}\")",
+      "Bash(python -m json.tool)",
+      "Bash(powershell -Command \"netstat -ano | findstr :8000\")",
+      "Bash(powershell -Command \"Stop-Process -Id 45216 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 38172 -Force\")",
+      "Bash(curl -s -X POST http://localhost:8000/predict-inference -H \"Content-Type: application/json\" -d \"{\"\"model_name\"\":\"\"llama-3-8b\"\",\"\"batch_size\"\":1,\"\"sequence_length\"\":2048,\"\"precision\"\":\"\"bf16\"\",\"\"kv_cache\"\":true,\"\"gpu_memory_mb\"\":24463}\")",
+      "Bash(powershell -Command \"Stop-Process -Id 52264 -Force\")",
+      "Bash(python -m pytest --tb=no -q)"
+    ]
+  }
+}

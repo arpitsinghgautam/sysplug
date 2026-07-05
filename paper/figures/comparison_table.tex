@@ -1,0 +1,24 @@
+% Comparison table: SysPlug vs prior work
+\begin{table*}[t]
+\centering
+\caption{Comparison of SysPlug with related tools.}
+\label{tab:related}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Feature & SysPlug & W\&B Sweeps & Ray Tune & Optuna & DeepSpeed Auto & torch.cuda.memory & Manual \\
+\midrule
+No training runs required     & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+Memory-safe suggestions       & \checkmark & $\times$ & $\times$ & $\times$ & partial  & $\times$ & manual \\
+LR scaling rules (cite)       & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ & manual \\
+ZeRO / FSDP awareness         & \checkmark & $\times$ & $\times$ & $\times$ & partial  & $\times$ & manual \\
+Online instability detection  & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+HF Trainer integration        & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & $\times$ & — \\
+What-if analysis              & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+No GPU required for advice    & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & requires GPU & manual \\
+Pip installable               & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & — \\
+RLHF / PPO helpers            & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ & manual \\
+\bottomrule
+\end{tabular}
+}
+\end{table*}

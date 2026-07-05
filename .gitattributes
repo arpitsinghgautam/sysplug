@@ -1,0 +1,24 @@
+# Normalize line endings: text files are LF in the repo, checked out native.
+* text=auto eol=lf
+
+# Explicitly treat these as text (LF in repo)
+*.py    text eol=lf
+*.pyi   text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.tex   text eol=lf
+*.bib   text eol=lf
+*.sh    text eol=lf
+Makefile text eol=lf
+
+# Binary assets — never touch
+*.png   binary
+*.jpg   binary
+*.pdf   binary
+*.gz    binary

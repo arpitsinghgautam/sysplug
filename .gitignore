@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ---------------------------------------------------------------------------
+# Packaging / distribution / build
+# ---------------------------------------------------------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+wheels/
+sdist/
+develop-eggs/
+.installed.cfg
+MANIFEST
+
+# ---------------------------------------------------------------------------
+# Virtual environments
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---------------------------------------------------------------------------
+# Test / coverage / type-check / lint caches
+# ---------------------------------------------------------------------------
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# ---------------------------------------------------------------------------
+# Experiment / benchmark outputs (generated, not source)
+# ---------------------------------------------------------------------------
+results/
+runs/
+outputs/
+*.log
+
+# ---------------------------------------------------------------------------
+# Editor / OS / local tooling
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code: keep shared settings.json, ignore machine-local overrides
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# LaTeX build artifacts (paper/)
+# ---------------------------------------------------------------------------
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
+paper/*.pdf

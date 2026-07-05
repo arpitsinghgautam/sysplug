@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sysplug"
+version = "0.1.0"
+description = "GPU-aware hyperparameter advisor for any deep learning training loop"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+keywords = ["deep-learning", "gpu", "hyperparameter", "optimization", "training"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0",
+    "pynvml>=11.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "psutil>=5.9",
+    "dataclasses-json>=0.6",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+hf = ["transformers>=4.35", "accelerate>=0.24"]
+deepspeed = ["deepspeed>=0.12"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-mock>=3.10",
+    "hypothesis>=6.80",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+    "types-psutil",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/sysplug"
+Repository = "https://github.com/your-org/sysplug"
+Issues = "https://github.com/your-org/sysplug/issues"
+
+[project.scripts]
+sysplug = "sysplug.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sysplug*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=sysplug --cov-report=term-missing --cov-fail-under=85"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "SIM"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.coverage.run]
+source = ["sysplug"]
+omit = ["sysplug/__main__.py", "*/tests/*", "*/examples/*"]

@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SysPlug — GPU Config Advisor</title>
+<style>
+/* ═══════════════════════════════════════════════════
+   ROOT VARIABLES  —  "Midnight Neon" palette
+═══════════════════════════════════════════════════ */
+:root {
+  --bg0:      #060912;
+  --bg1:      #0b1120;
+  --bg2:      #111827;
+  --bg3:      #1c2a40;
+  --border:   #1f2d45;
+  --border-hi:#2a3f5f;
+
+  --cyan:     #06b6d4;
+  --cyan-dim: #0e7490;
+  --blue:     #3b82f6;
+  --purple:   #8b5cf6;
+  --pink:     #ec4899;
+  --amber:    #f59e0b;
+  --green:    #10b981;
+  --red:      #ef4444;
+  --red-glow: rgba(239,68,68,.35);
+
+  --text:     #e2e8f0;
+  --sub:      #64748b;
+  --muted:    #374151;
+
+  --bar-params: #3b82f6;
+  --bar-grads:  #8b5cf6;
+  --bar-opt:    #ec4899;
+  --bar-kv:     #06b6d4;
+  --bar-act:    #f59e0b;
+  --bar-oh:     #475569;
+
+  --radius: 10px;
+  --transition: 220ms cubic-bezier(.4,0,.2,1);
+}
+
+/* ═══════════════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{
+  background:var(--bg0);
+  color:var(--text);
+  font-family:'Segoe UI',system-ui,sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* subtle animated grid bg */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(6,182,212,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(6,182,212,.03) 1px,transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* ═══════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════ */
+.header{
+  position:relative;z-index:1;
+  background:linear-gradient(135deg,#060d1f,#0b1628);
+  border-bottom:1px solid var(--border);
+  padding:0 24px;
+  display:flex;align-items:center;justify-content:space-between;
+  height:56px;
+  box-shadow:0 1px 20px rgba(6,182,212,.08);
+}
+.header-brand{display:flex;align-items:center;gap:12px}
+.logo{
+  width:32px;height:32px;
+  background:linear-gradient(135deg,var(--cyan),var(--blue));
+  border-radius:8px;
+  display:grid;place-items:center;
+  font-size:16px;font-weight:900;color:#fff;
+  box-shadow:0 0 12px rgba(6,182,212,.5);
+}
+.brand-name{
+  font-size:18px;font-weight:700;letter-spacing:.04em;
+  background:linear-gradient(90deg,var(--cyan),var(--blue));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.brand-sub{font-size:11px;color:var(--sub);margin-top:1px}
+
+.header-gpu{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:5px 14px;
+  font-size:12px;
+}
+.gpu-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 6px var(--green);
+  animation:pulse-dot 2s infinite;
+}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+#hw-label{color:var(--text);font-weight:600}
+.cpu-label{color:var(--amber)}
+
+/* ═══════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════ */
+.layout{
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:0;
+  height:calc(100vh - 56px);
+  overflow:hidden;
+}
+
+/* ═══════════════════════════════════════════════════
+   LEFT PANEL — SETTINGS
+═══════════════════════════════════════════════════ */
+.settings{
+  background:var(--bg1);
+  border-right:1px solid var(--border);
+  overflow-y:auto;
+  padding:16px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.settings::-webkit-scrollbar{width:4px}
+.settings::-webkit-scrollbar-track{background:transparent}
+.settings::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+
+.section{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px;
+}
+.section-title{
+  font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--sub);margin-bottom:12px;
+  display:flex;align-items:center;gap:6px;
+}
+.section-title::before{
+  content:'';
+  width:3px;height:12px;border-radius:2px;
+  background:linear-gradient(var(--cyan),var(--blue));
+}
+
+/* ── Mode toggle ── */
+.mode-toggle{
+  display:flex;border-radius:8px;overflow:hidden;
+  border:1px solid var(--border-hi);
+  background:var(--bg3);
+  margin-bottom:4px;
+  flex-shrink:0;
+}
+.mode-btn{
+  flex:1;padding:10px 0;font-size:12px;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;
+  background:transparent;color:var(--sub);
+  border:none;cursor:pointer;transition:var(--transition);
+}
+.mode-btn.active-train{
+  background:linear-gradient(135deg,#0e7490,#1d4ed8);
+  color:#fff;
+  box-shadow:0 0 12px rgba(6,182,212,.4);
+}
+.mode-btn.active-infer{
+  background:linear-gradient(135deg,#7c3aed,#db2777);
+  color:#fff;
+  box-shadow:0 0 12px rgba(139,92,246,.4);
+}
+.mode-btn:hover:not(.active-train):not(.active-infer){
+  background:var(--bg2);color:var(--text);
+}
+
+/* ── Field row ── */
+.field{margin-bottom:12px}
+.field:last-child{margin-bottom:0}
+.field-label{
+  font-size:11px;font-weight:600;color:var(--sub);
+  margin-bottom:6px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.field-label span{
+  font-size:13px;font-weight:700;
+  color:var(--cyan);
+  font-variant-numeric:tabular-nums;
+  min-width:48px;text-align:right;
+}
+
+/* ── Custom select ── */
+.sel{
+  width:100%;
+  background:var(--bg3);
+  border:1px solid var(--border-hi);
+  color:var(--text);
+  border-radius:6px;
+  padding:7px 10px;
+  font-size:13px;
+  appearance:none;
+  cursor:pointer;
+  outline:none;
+  transition:border-color var(--transition),box-shadow var(--transition);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 10px center;
+  padding-right:28px;
+}
+.sel:focus,.sel:hover{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(6,182,212,.15)}
+.sel option{background:var(--bg3);color:var(--text)}
+
+/* ── Slider ── */
+.slider{
+  -webkit-appearance:none;
+  width:100%;height:6px;
+  background:var(--bg3);
+  border-radius:3px;
+  outline:none;
+  cursor:pointer;
+  transition:opacity var(--transition);
+}
+.slider:hover{opacity:.95}
+.slider::-webkit-slider-runnable-track{
+  height:6px;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan) var(--pct,0%),var(--bg3) var(--pct,0%));
+}
+.slider::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:16px;height:16px;border-radius:50%;
+  background:var(--cyan);
+  box-shadow:0 0 8px rgba(6,182,212,.6);
+  border:2px solid var(--bg0);
+  margin-top:-5px;
+  cursor:pointer;
+  transition:box-shadow var(--transition),transform var(--transition);
+}
+.slider::-webkit-slider-thumb:hover{
+  box-shadow:0 0 14px rgba(6,182,212,.9);
+  transform:scale(1.15);
+}
+.slider::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;
+  background:var(--cyan);border:2px solid var(--bg0);
+  cursor:pointer;
+}
+
+/* ── Toggle ── */
+.toggle-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;
+}
+.toggle-label{font-size:13px;color:var(--text)}
+.toggle-sub{font-size:11px;color:var(--sub);margin-top:2px}
+.toggle{
+  position:relative;width:42px;height:22px;
+  cursor:pointer;flex-shrink:0;
+}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{
+  position:absolute;inset:0;
+  background:var(--bg3);border:1px solid var(--border-hi);
+  border-radius:11px;transition:var(--transition);
+}
+.toggle input:checked ~ .toggle-track{
+  background:var(--cyan-dim);border-color:var(--cyan);
+  box-shadow:0 0 8px rgba(6,182,212,.3);
+}
+.toggle-thumb{
+  position:absolute;top:3px;left:3px;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--sub);
+  transition:var(--transition);
+}
+.toggle input:checked ~ .toggle-thumb{
+  left:23px;background:var(--cyan);
+  box-shadow:0 0 6px rgba(6,182,212,.6);
+}
+
+/* ── Custom input ── */
+.num-input{
+  width:100%;
+  background:var(--bg3);border:1px solid var(--border-hi);
+  color:var(--text);border-radius:6px;
+  padding:7px 10px;font-size:13px;outline:none;
+  transition:border-color var(--transition);
+}
+.num-input:focus{border-color:var(--cyan)}
+.num-input::placeholder{color:var(--sub)}
+
+/* ═══════════════════════════════════════════════════
+   RIGHT PANEL — STATS
+═══════════════════════════════════════════════════ */
+.stats{
+  overflow-y:auto;
+  padding:16px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.stats::-webkit-scrollbar{width:4px}
+.stats::-webkit-scrollbar-track{background:transparent}
+.stats::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+
+/* ── Card ── */
+.card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;
+  transition:border-color var(--transition);
+}
+.card-title{
+  font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--sub);
+  margin-bottom:12px;
+}
+
+/* ═══════════════════════════════════════════════════
+   VRAM METER  — the hero widget
+═══════════════════════════════════════════════════ */
+.vram-card{border-color:var(--border-hi)}
+.vram-card.danger{border-color:var(--red);animation:oom-glow .8s infinite alternate}
+@keyframes oom-glow{
+  from{box-shadow:0 0 0 rgba(239,68,68,0)}
+  to{box-shadow:0 0 20px var(--red-glow),0 0 40px rgba(239,68,68,.15)}
+}
+
+.vram-numbers{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  margin-bottom:12px;
+}
+.vram-used{
+  font-size:36px;font-weight:800;line-height:1;
+  font-variant-numeric:tabular-nums;
+  transition:color var(--transition);
+}
+.vram-used.ok   {color:var(--green)}
+.vram-used.warn {color:var(--amber)}
+.vram-used.danger{color:var(--red)}
+.vram-unit{font-size:16px;color:var(--sub);margin-bottom:4px;margin-left:4px}
+.vram-total{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
+.vram-ci{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* bar track */
+.vram-track{
+  position:relative;
+  height:22px;
+  background:var(--bg3);
+  border-radius:11px;
+  overflow:hidden;
+  border:1px solid var(--border);
+}
+.vram-fill{
+  height:100%;border-radius:11px;
+  transition:width .4s cubic-bezier(.4,0,.2,1),background-color .3s;
+  position:relative;
+  min-width:4px;
+}
+.vram-fill::after{
+  content:'';
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(255,255,255,.15) 0%,transparent 60%);
+  border-radius:inherit;
+}
+.vram-fill.ok   {background:linear-gradient(90deg,#10b981,#06b6d4)}
+.vram-fill.warn {background:linear-gradient(90deg,#f59e0b,#ef8c12)}
+.vram-fill.danger{
+  background:linear-gradient(90deg,#ef4444,#dc2626);
+  box-shadow:0 0 12px rgba(239,68,68,.5);
+}
+
+/* budget marker */
+.vram-budget-marker{
+  position:absolute;
+  top:0;bottom:0;
+  width:2px;background:var(--amber);
+  opacity:.8;
+  box-shadow:0 0 6px var(--amber);
+}
+.vram-budget-label{
+  position:absolute;top:-18px;
+  font-size:10px;color:var(--amber);font-weight:700;
+  transform:translateX(-50%);
+  white-space:nowrap;
+}
+
+.vram-status{
+  margin-top:8px;
+  font-size:12px;font-weight:600;
+  display:flex;align-items:center;gap:6px;
+}
+.vram-status .dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0;
+}
+.status-ok    .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-warn  .dot{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.status-danger.dot{background:var(--red);box-shadow:0 0 6px var(--red)}
+.status-ok   {color:var(--green)}
+.status-warn {color:var(--amber)}
+.status-danger{color:var(--red)}
+
+.oom-badge{
+  display:none;
+  margin-left:auto;
+  background:var(--red);color:#fff;
+  font-size:10px;font-weight:800;letter-spacing:.06em;
+  padding:2px 8px;border-radius:4px;
+  animation:shake .4s ease;
+}
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-4px)}
+  40%{transform:translateX(4px)}
+  60%{transform:translateX(-3px)}
+  80%{transform:translateX(3px)}
+}
+.vram-card.danger .oom-badge{display:inline-block}
+
+/* ═══════════════════════════════════════════════════
+   MEMORY BREAKDOWN BAR
+═══════════════════════════════════════════════════ */
+.breakdown-bar{
+  display:flex;
+  height:18px;border-radius:9px;
+  overflow:hidden;
+  gap:2px;
+  margin-bottom:10px;
+}
+.breakdown-seg{
+  height:100%;
+  border-radius:3px;
+  transition:flex-grow .4s cubic-bezier(.4,0,.2,1);
+  position:relative;
+  min-width:0;
+  overflow:hidden;
+}
+.breakdown-seg::after{
+  content:'';
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(255,255,255,.18) 0%,transparent 60%);
+}
+
+.legend{
+  display:grid;grid-template-columns:repeat(5,1fr);
+  gap:6px;
+}
+.legend-item{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.legend-dot{
+  width:10px;height:10px;border-radius:2px;flex-shrink:0;
+}
+.legend-lbl{font-size:10px;color:var(--sub);text-align:center;line-height:1.2}
+.legend-val{
+  font-size:11px;font-weight:700;color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ═══════════════════════════════════════════════════
+   METRICS ROW
+═══════════════════════════════════════════════════ */
+.metrics{
+  display:grid;grid-template-columns:1fr 1fr 1fr;
+  gap:10px;
+}
+.metric-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px;
+  display:flex;flex-direction:column;gap:4px;
+}
+.metric-label{font-size:10px;color:var(--sub);font-weight:700;
+  text-transform:uppercase;letter-spacing:.08em}
+.metric-value{
+  font-size:26px;font-weight:800;line-height:1;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(135deg,var(--cyan),var(--blue));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.metric-unit{font-size:11px;color:var(--sub);margin-top:2px}
+.metric-sub{font-size:11px;color:var(--sub)}
+
+/* ── throughput bar hint ── */
+.tput-bar{
+  height:4px;background:var(--bg3);border-radius:2px;
+  margin-top:6px;overflow:hidden;
+}
+.tput-fill{
+  height:100%;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan),var(--blue));
+  transition:width .4s ease;
+}
+
+/* ═══════════════════════════════════════════════════
+   EFFECTIVE BATCH
+═══════════════════════════════════════════════════ */
+.eff-batch-display{
+  display:flex;align-items:baseline;gap:8px;
+  flex-wrap:wrap;
+}
+.eff-batch-num{
+  font-size:42px;font-weight:900;line-height:1;
+  font-variant-numeric:tabular-nums;
+  color:var(--cyan);
+}
+.eff-batch-eq{font-size:14px;color:var(--sub)}
+.lr-rule-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--bg3);border:1px solid var(--border-hi);
+  border-radius:20px;padding:3px 10px;
+  font-size:11px;font-weight:600;color:var(--sub);
+  margin-top:4px;
+}
+.lr-icon{color:var(--cyan)}
+
+/* ═══════════════════════════════════════════════════
+   WARNINGS
+═══════════════════════════════════════════════════ */
+.warn-list{display:flex;flex-direction:column;gap:6px}
+.warn-item{
+  display:flex;align-items:flex-start;gap:8px;
+  padding:8px 12px;
+  background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.2);
+  border-radius:6px;
+  font-size:12px;color:var(--text);
+  animation:fadeIn .3s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.warn-icon{color:var(--red);flex-shrink:0;font-size:14px;margin-top:1px}
+.no-warn{
+  font-size:12px;color:var(--green);
+  display:flex;align-items:center;gap:6px;
+}
+.no-warn::before{
+  content:'✓';
+  display:inline-grid;place-items:center;
+  width:18px;height:18px;border-radius:50%;
+  background:rgba(16,185,129,.15);
+  border:1px solid rgba(16,185,129,.3);
+  font-size:11px;
+}
+
+/* ═══════════════════════════════════════════════════
+   LOADING OVERLAY
+═══════════════════════════════════════════════════ */
+.spinner{
+  display:none;
+  width:16px;height:16px;
+  border:2px solid var(--border);
+  border-top-color:var(--cyan);
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+  margin-left:8px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.updating .spinner{display:inline-block}
+
+/* ═══════════════════════════════════════════════════
+   PRECISION PILLS
+═══════════════════════════════════════════════════ */
+.pill-group{
+  display:flex;gap:4px;flex-wrap:wrap;
+}
+.pill-btn{
+  padding:5px 12px;
+  border-radius:20px;
+  border:1px solid var(--border-hi);
+  background:var(--bg3);
+  color:var(--sub);
+  font-size:12px;font-weight:600;
+  cursor:pointer;
+  transition:all var(--transition);
+  white-space:nowrap;
+}
+.pill-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.pill-btn.active{
+  background:rgba(6,182,212,.15);
+  border-color:var(--cyan);
+  color:var(--cyan);
+  box-shadow:0 0 8px rgba(6,182,212,.2);
+}
+
+/* ═══════════════════════════════════════════════════
+   ROOFLINE HINT
+═══════════════════════════════════════════════════ */
+.roofline-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;padding:3px 10px;
+  border-radius:20px;
+  border:1px solid var(--border-hi);
+  color:var(--sub);
+}
+.roofline-pill.mem-bound{
+  border-color:rgba(245,158,11,.3);
+  color:var(--amber);background:rgba(245,158,11,.06);
+}
+.roofline-pill.compute-bound{
+  border-color:rgba(6,182,212,.3);
+  color:var(--cyan);background:rgba(6,182,212,.06);
+}
+
+/* ═══════════════════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════════════════ */
+[data-tip]{position:relative;cursor:help}
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;
+  bottom:calc(100% + 6px);left:50%;
+  transform:translateX(-50%);
+  background:var(--bg3);
+  border:1px solid var(--border-hi);
+  color:var(--text);
+  font-size:11px;padding:5px 10px;
+  border-radius:6px;white-space:nowrap;
+  pointer-events:none;opacity:0;
+  transition:opacity .2s;z-index:99;
+}
+[data-tip]:hover::after{opacity:1}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE TWEAKS
+═══════════════════════════════════════════════════ */
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr;height:auto;overflow:visible}
+  .settings{height:auto}
+  .metrics{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ╔══════════════════════════════════════════════╗
+     ║                  HEADER                      ║
+     ╚══════════════════════════════════════════════╝ -->
+<header class="header">
+  <div class="header-brand">
+    <div class="logo">S</div>
+    <div>
+      <div class="brand-name">SYSPLUG</div>
+      <div class="brand-sub">GPU CONFIG ADVISOR</div>
+    </div>
+  </div>
+
+  <div class="header-gpu">
+    <div class="gpu-dot" id="gpu-dot"></div>
+    <span id="hw-label">Detecting hardware…</span>
+    <div class="spinner" id="global-spinner"></div>
+  </div>
+</header>
+
+<!-- ╔══════════════════════════════════════════════╗
+     ║                  LAYOUT                      ║
+     ╚══════════════════════════════════════════════╝ -->
+<div class="layout">
+
+  <!-- ── LEFT: SETTINGS ─────────────────────────── -->
+  <aside class="settings">
+
+    <!-- Mode toggle -->
+    <div class="mode-toggle">
+      <button class="mode-btn active-train" id="btn-train" onclick="setMode('training')">
+        ⚡ Training
+      </button>
+      <button class="mode-btn" id="btn-infer" onclick="setMode('inference')">
+        ◈ Inference
+      </button>
+    </div>
+
+    <!-- Model -->
+    <div class="section">
+      <div class="section-title">Model</div>
+
+      <div class="field">
+        <div class="field-label">Model name</div>
+        <select class="sel" id="s-model">
+          <option value="gpt2">GPT-2 (125M)</option>
+          <option value="gpt2-medium">GPT-2 Medium (345M)</option>
+          <option value="gpt2-large">GPT-2 Large (774M)</option>
+          <option value="gpt2-xl">GPT-2 XL (1.6B)</option>
+          <option value="phi-2">Phi-2 (2.7B)</option>
+          <option value="llama-3-8b" selected>LLaMA-3 8B</option>
+          <option value="llama-2-7b">LLaMA-2 7B</option>
+          <option value="llama-2-13b">LLaMA-2 13B</option>
+          <option value="llama-2-70b">LLaMA-2 70B</option>
+          <option value="mistral-7b">Mistral 7B</option>
+          <option value="mixtral-8x7b">Mixtral 8×7B (47B)</option>
+          <option value="falcon-40b">Falcon 40B</option>
+          <option value="bert-base">BERT Base (110M)</option>
+          <option value="t5-xxl">T5 XXL (11B)</option>
+          <option value="custom">⚙ Custom param count…</option>
+        </select>
+      </div>
+
+      <div class="field" id="custom-params-row" style="display:none">
+        <div class="field-label">Parameter count (e.g. 3000000000)</div>
+        <input class="num-input" id="s-custom-params" type="number"
+               placeholder="125000000" min="1000000" step="1000000" value="125000000" />
+      </div>
+    </div>
+
+    <!-- Batch & Accumulation -->
+    <div class="section">
+      <div class="section-title">Batch Configuration</div>
+
+      <div class="field">
+        <div class="field-label">
+          <span id="lbl-batch-title">Batch size</span>
+          <span id="lbl-batch">8</span>
+        </div>
+        <input class="slider" id="s-batch" type="range"
+               min="1" max="256" value="8" step="1" />
+      </div>
+
+      <div class="field training-only">
+        <div class="field-label">Gradient accumulation <span id="lbl-acc">1</span></div>
+        <input class="slider" id="s-acc" type="range"
+               min="1" max="64" value="1" step="1" />
+      </div>
+
+      <div class="field">
+        <div class="field-label">GPU count <span id="lbl-gpus">1</span></div>
+        <input class="slider" id="s-gpus" type="range"
+               min="1" max="8" value="1" step="1" />
+      </div>
+    </div>
+
+    <!-- Precision — pill group -->
+    <div class="section">
+      <div class="section-title">Precision</div>
+      <div class="pill-group" id="precision-pills">
+        <button class="pill-btn" data-val="fp32">FP32</button>
+        <button class="pill-btn" data-val="fp16">FP16</button>
+        <button class="pill-btn active" data-val="bf16">BF16</button>
+        <button class="pill-btn" data-val="int8">INT8</button>
+        <button class="pill-btn" data-val="int4">INT4</button>
+      </div>
+    </div>
+
+    <!-- Optimizer & Parallelism (training only) -->
+    <div class="section training-only">
+      <div class="section-title">Optimizer &amp; Parallelism</div>
+
+      <div class="field">
+        <div class="field-label">Optimizer</div>
+        <select class="sel" id="s-opt">
+          <option value="adamw" selected>AdamW</option>
+          <option value="adam">Adam</option>
+          <option value="sgd">SGD</option>
+          <option value="adafactor">Adafactor</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Parallelism strategy</div>
+        <select class="sel" id="s-par">
+          <option value="none" selected>None (single GPU)</option>
+          <option value="dp">DP — Data Parallel</option>
+          <option value="ddp">DDP — Distributed DP</option>
+          <option value="zero1">ZeRO Stage 1</option>
+          <option value="zero2">ZeRO Stage 2</option>
+          <option value="zero3">ZeRO Stage 3</option>
+          <option value="fsdp">FSDP</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Inference options (inference only) -->
+    <div class="section inference-only" style="display:none">
+      <div class="section-title">Inference Options</div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">KV Cache</div>
+          <div class="toggle-sub">Caches keys/values for faster generation</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="s-kvcache" checked />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Sequence & Advanced -->
+    <div class="section">
+      <div class="section-title">Advanced</div>
+
+      <div class="field">
+        <div class="field-label">Sequence length <span id="lbl-seq">512</span></div>
+        <input class="slider" id="s-seq" type="range"
+               min="64" max="8192" value="512" step="64" />
+      </div>
+
+      <div class="toggle-row training-only">
+        <div>
+          <div class="toggle-label">Gradient Checkpointing</div>
+          <div class="toggle-sub">Reduces activation memory</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="s-gc" />
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- GPU VRAM limit -->
+    <div class="section">
+      <div class="section-title">GPU Hardware</div>
+      <div class="field">
+        <div class="field-label">Total VRAM per GPU</div>
+        <select class="sel" id="s-vram">
+          <option value="8192">8 GB</option>
+          <option value="10240">10 GB</option>
+          <option value="16384">16 GB (T4)</option>
+          <option value="24576">24 GB (3090/4090)</option>
+          <option value="32768">32 GB (V100 32G)</option>
+          <option value="40960" selected>40 GB (A100)</option>
+          <option value="49152">48 GB (A6000)</option>
+          <option value="81920">80 GB (A100 80G / H100)</option>
+          <option value="141312">138 GB (H200)</option>
+        </select>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── RIGHT: STATS ────────────────────────────── -->
+  <main class="stats">
+
+    <!-- VRAM meter hero card -->
+    <div class="card vram-card" id="vram-card">
+      <div class="card-title">GPU VRAM USAGE</div>
+
+      <div class="vram-numbers">
+        <div style="display:flex;align-items:baseline">
+          <div class="vram-used ok" id="vram-used-num">—</div>
+          <div class="vram-unit">MiB</div>
+        </div>
+        <div style="text-align:right">
+          <div class="vram-total" id="vram-total-txt">/ 40,960 MiB</div>
+          <div class="vram-ci"   id="vram-ci-txt">90% CI: — — —</div>
+        </div>
+      </div>
+
+      <!-- bar -->
+      <div class="vram-track">
+        <div class="vram-fill ok" id="vram-fill" style="width:0%"></div>
+        <div class="vram-budget-marker" id="vram-budget-marker" style="left:85%">
+          <div class="vram-budget-label">85% budget</div>
+        </div>
+      </div>
+
+      <div class="vram-status status-ok" id="vram-status">
+        <div class="dot"></div>
+        <span id="vram-status-txt">Within budget</span>
+        <span class="oom-badge" id="oom-badge">OOM RISK</span>
+      </div>
+    </div>
+
+    <!-- Memory breakdown -->
+    <div class="card">
+      <div class="card-title">MEMORY BREAKDOWN</div>
+
+      <div class="breakdown-bar" id="breakdown-bar">
+        <div class="breakdown-seg" id="seg-params"
+             style="background:var(--bar-params);flex-grow:1"
+             data-tip="Parameters"></div>
+        <div class="breakdown-seg training-seg" id="seg-grads"
+             style="background:var(--bar-grads);flex-grow:1"
+             data-tip="Gradients"></div>
+        <div class="breakdown-seg training-seg" id="seg-opt"
+             style="background:var(--bar-opt);flex-grow:1"
+             data-tip="Optimizer states"></div>
+        <div class="breakdown-seg inference-seg" id="seg-kv"
+             style="background:var(--bar-kv);flex-grow:0;display:none"
+             data-tip="KV Cache"></div>
+        <div class="breakdown-seg" id="seg-act"
+             style="background:var(--bar-act);flex-grow:1"
+             data-tip="Activations"></div>
+        <div class="breakdown-seg" id="seg-oh"
+             style="background:var(--bar-oh);flex-grow:.5"
+             data-tip="Framework overhead"></div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background:var(--bar-params)"></div>
+          <div class="legend-lbl">Params</div>
+          <div class="legend-val" id="lv-params">—</div>
+        </div>
+        <div class="legend-item training-seg">
+          <div class="legend-dot" style="background:var(--bar-grads)"></div>
+          <div class="legend-lbl">Grads</div>
+          <div class="legend-val" id="lv-grads">—</div>
+        </div>
+        <div class="legend-item training-seg">
+          <div class="legend-dot" style="background:var(--bar-opt)"></div>
+          <div class="legend-lbl">Optim</div>
+          <div class="legend-val" id="lv-opt">—</div>
+        </div>
+        <div class="legend-item inference-seg" style="display:none">
+          <div class="legend-dot" style="background:var(--bar-kv)"></div>
+          <div class="legend-lbl">KV Cache</div>
+          <div class="legend-val" id="lv-kv">—</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:var(--bar-act)"></div>
+          <div class="legend-lbl">Act.</div>
+          <div class="legend-val" id="lv-act">—</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:var(--bar-oh)"></div>
+          <div class="legend-lbl">Overhead</div>
+          <div class="legend-val" id="lv-oh">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metrics row: throughput + tflops + bound -->
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Throughput</div>
+        <div class="metric-value" id="m-sps">—</div>
+        <div class="metric-unit">samples / sec</div>
+        <div class="tput-bar"><div class="tput-fill" id="tput-bar" style="width:0%"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tokens / sec</div>
+        <div class="metric-value" id="m-tps">—</div>
+        <div class="metric-unit">tokens / sec</div>
+        <div class="tput-bar"><div class="tput-fill" id="tput-bar2" style="width:0%"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Attainable TFLOPS</div>
+        <div class="metric-value" id="m-tflops">—</div>
+        <div class="metric-unit">TFLOPS</div>
+        <div style="margin-top:8px">
+          <span class="roofline-pill" id="bound-pill">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Effective batch + LR rule (training) / Concurrency info (inference) -->
+    <div class="card" id="batch-card">
+      <div class="card-title" id="batch-card-title">EFFECTIVE BATCH SIZE</div>
+      <div class="eff-batch-display">
+        <div class="eff-batch-num" id="eff-batch-num">—</div>
+        <div class="eff-batch-eq" id="eff-batch-eq">samples per optimizer step</div>
+      </div>
+      <div style="margin-top:8px" id="lr-rule-row">
+        <span class="lr-rule-badge">
+          <span class="lr-icon">⚡</span>
+          Recommended LR rule: <strong id="lr-rule-txt" style="color:var(--text)">—</strong>
+        </span>
+      </div>
+    </div>
+
+    <!-- Warnings -->
+    <div class="card" id="warn-card">
+      <div class="card-title">WARNINGS</div>
+      <div class="warn-list" id="warn-list">
+        <div class="no-warn" id="no-warn">All settings are within safe limits</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+// ── State ───────────────────────────────────────────────────────────────────
+let precision = "bf16";
+let mode = "training";       // "training" | "inference"
+let debounceTimer = null;
+let animFrames = {};   // running number animations
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function fmt(n, decimals = 0) {
+  if (n == null || isNaN(n)) return "—";
+  return n.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function fmtMib(mb) {
+  if (mb >= 1024) return fmt(mb / 1024, 1) + " GB";
+  return fmt(mb, 0) + " MiB";
+}
+
+// Smooth counter animation
+function animateNum(elId, target, decimals = 0, suffix = "") {
+  if (animFrames[elId]) cancelAnimationFrame(animFrames[elId]);
+  const el = $(elId);
+  if (!el) return;
+  const start = parseFloat(el.dataset.current || "0") || 0;
+  const dur = 350;
+  const t0 = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const cur = start + (target - start) * eased;
+    el.textContent = fmt(cur, decimals) + suffix;
+    el.dataset.current = cur;
+    if (t < 1) animFrames[elId] = requestAnimationFrame(step);
+  }
+  animFrames[elId] = requestAnimationFrame(step);
+}
+
+// Update slider gradient fill
+function updateSlider(sl, lbl) {
+  const min = +sl.min, max = +sl.max, val = +sl.value;
+  const pct = ((val - min) / (max - min)) * 100;
+  sl.style.setProperty("--pct", pct + "%");
+  sl.style.background = `linear-gradient(90deg, var(--cyan) ${pct}%, var(--bg3) ${pct}%)`;
+  if (lbl) lbl.textContent = sl.id === "s-seq"
+    ? fmt(+sl.value)
+    : sl.value;
+}
+
+// ── Mode switching ───────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  // Button styling
+  $("btn-train").className = "mode-btn" + (m === "training"  ? " active-train" : "");
+  $("btn-infer").className = "mode-btn" + (m === "inference" ? " active-infer"  : "");
+
+  // Show/hide training-only elements
+  document.querySelectorAll(".training-only").forEach(el => {
+    el.style.display = m === "training" ? "" : "none";
+  });
+  // Show/hide inference-only elements
+  document.querySelectorAll(".inference-only").forEach(el => {
+    el.style.display = m === "inference" ? "" : "none";
+  });
+  // Breakdown bar segments
+  document.querySelectorAll(".training-seg").forEach(el => {
+    el.style.display = m === "training" ? "" : "none";
+  });
+  document.querySelectorAll(".inference-seg").forEach(el => {
+    el.style.display = m === "inference" ? "" : "none";
+  });
+
+  // Adapt labels
+  $("lbl-batch-title").textContent   = m === "training" ? "Batch size" : "Concurrent requests";
+  $("batch-card-title").textContent  = m === "training" ? "EFFECTIVE BATCH SIZE" : "CONCURRENT REQUESTS";
+  $("eff-batch-eq").textContent      = m === "training" ? "" : "sequences processed simultaneously";
+  $("lr-rule-row").style.display     = m === "training" ? "" : "none";
+
+  schedulePredict();
+}
+
+// ── Precision pills ──────────────────────────────────────────────────────────
+document.getElementById("precision-pills").addEventListener("click", e => {
+  const btn = e.target.closest(".pill-btn");
+  if (!btn) return;
+  document.querySelectorAll(".pill-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  precision = btn.dataset.val;
+  schedulePredict();
+});
+
+// ── Sliders ──────────────────────────────────────────────────────────────────
+[
+  ["s-batch", "lbl-batch"],
+  ["s-acc",   "lbl-acc"],
+  ["s-gpus",  "lbl-gpus"],
+  ["s-seq",   "lbl-seq"],
+].forEach(([sid, lid]) => {
+  const sl = $(sid), lbl = $(lid);
+  updateSlider(sl, lbl);
+  sl.addEventListener("input", () => { updateSlider(sl, lbl); schedulePredict(); });
+});
+
+// ── Other controls ───────────────────────────────────────────────────────────
+["s-model","s-opt","s-par","s-vram","s-gc","s-kvcache"].forEach(id => {
+  $(id).addEventListener("change", schedulePredict);
+});
+
+$("s-model").addEventListener("change", () => {
+  $("custom-params-row").style.display =
+    $("s-model").value === "custom" ? "block" : "none";
+});
+
+$("s-custom-params").addEventListener("input", schedulePredict);
+
+// ── Debounced predict ────────────────────────────────────────────────────────
+function schedulePredict() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(runPredict, 130);
+}
+
+async function runPredict() {
+  const spinner = $("global-spinner");
+  spinner.style.display = "inline-block";
+
+  const modelVal = $("s-model").value;
+  const isCustom = modelVal === "custom";
+  const gpuMb    = +$("s-vram").value;
+
+  let endpoint, body;
+  if (mode === "inference") {
+    endpoint = "/predict-inference";
+    body = {
+      model_name:    isCustom ? "gpt2" : modelVal,
+      param_count:   isCustom ? (+$("s-custom-params").value || 0) : 0,
+      batch_size:    +$("s-batch").value,
+      sequence_length: +$("s-seq").value,
+      precision,
+      gpu_count:     +$("s-gpus").value,
+      gpu_memory_mb: gpuMb,
+      kv_cache:      $("s-kvcache").checked,
+    };
+  } else {
+    endpoint = "/predict";
+    body = {
+      model_name:               isCustom ? "gpt2" : modelVal,
+      param_count:              isCustom ? (+$("s-custom-params").value || 0) : 0,
+      batch_size:               +$("s-batch").value,
+      gradient_accumulation:    +$("s-acc").value,
+      sequence_length:          +$("s-seq").value,
+      precision,
+      optimizer:                $("s-opt").value,
+      parallelism:              $("s-par").value,
+      use_gradient_checkpointing: $("s-gc").checked,
+      gpu_count:                +$("s-gpus").value,
+      gpu_memory_mb:            gpuMb,
+    };
+  }
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(resp.statusText);
+    const d = await resp.json();
+    applyResults(d, gpuMb);
+  } catch (err) {
+    console.warn("predict failed:", err);
+  } finally {
+    spinner.style.display = "none";
+  }
+}
+
+// ── Apply results to UI ──────────────────────────────────────────────────────
+function applyResults(d, gpuMb) {
+  // ── VRAM bar ────────────────────────────────────────────────────────────
+  const pct = Math.min(d.mem_pct, 110);   // cap visual at 110%
+  const fillEl  = $("vram-fill");
+  const numEl   = $("vram-used-num");
+  const cardEl  = $("vram-card");
+  const statEl  = $("vram-status");
+  const statTxt = $("vram-status-txt");
+
+  fillEl.style.width = pct.toFixed(1) + "%";
+
+  // colour states
+  const state = d.mem_pct < 70 ? "ok" : d.mem_pct < 85 ? "warn" : "danger";
+  ["ok","warn","danger"].forEach(s => {
+    fillEl.classList.toggle(s, s === state);
+    numEl .classList.toggle(s, s === state);
+  });
+  cardEl.classList.toggle("danger", state === "danger");
+  statEl.className  = "vram-status status-" + state;
+  statTxt.textContent = state === "ok"
+    ? `Within budget — ${d.mem_pct.toFixed(1)}% used`
+    : state === "warn"
+    ? `Approaching limit — ${d.mem_pct.toFixed(1)}% used`
+    : `EXCEEDS BUDGET — ${d.mem_pct.toFixed(1)}% of VRAM`;
+
+  animateNum("vram-used-num", d.peak_memory_mb, 0);
+
+  $("vram-total-txt").textContent = `/ ${fmt(gpuMb, 0)} MiB  (${fmtMib(gpuMb)})`;
+  $("vram-ci-txt").textContent =
+    `90% CI: ${fmt(d.lower_mb, 0)} – ${fmt(d.upper_mb, 0)} MiB`;
+
+  // budget marker position
+  const budgetPct = (d.budget_mb / gpuMb) * 100;
+  $("vram-budget-marker").style.left = budgetPct.toFixed(1) + "%";
+
+  // ── Breakdown bar ───────────────────────────────────────────────────────
+  const bd = d.breakdown;
+  const isInfer = mode === "inference";
+  const keys = isInfer
+    ? ["parameters","kv_cache","activations","overhead"]
+    : ["parameters","gradients","optimizer","activations","overhead"];
+  const segs = {
+    parameters:  "seg-params",
+    gradients:   "seg-grads",
+    optimizer:   "seg-opt",
+    kv_cache:    "seg-kv",
+    activations: "seg-act",
+    overhead:    "seg-oh",
+  };
+  const legends = {
+    parameters:  "lv-params",
+    gradients:   "lv-grads",
+    optimizer:   "lv-opt",
+    kv_cache:    "lv-kv",
+    activations: "lv-act",
+    overhead:    "lv-oh",
+  };
+  keys.forEach(k => {
+    const seg = $(segs[k]);
+    const lbl = $(legends[k]);
+    const v   = bd[k];
+    if (!v) return;
+    if (seg) seg.style.flexGrow = Math.max(v.pct, 0.5);
+    if (lbl) {
+      lbl.textContent = v.mb >= 1024
+        ? (v.mb / 1024).toFixed(1) + " G"
+        : fmt(v.mb, 0) + " M";
+    }
+  });
+
+  // ── Throughput ──────────────────────────────────────────────────────────
+  animateNum("m-sps", d.samples_per_sec, 1);
+  animateNum("m-tps", d.tokens_per_sec,  0);
+  animateNum("m-tflops", d.attainable_tflops, 1);
+
+  // mini bars (scaled to rough max)
+  const spsMax  = 500;
+  const tpsMax  = 250_000;
+  $("tput-bar").style.width  = Math.min(d.samples_per_sec / spsMax  * 100, 100) + "%";
+  $("tput-bar2").style.width = Math.min(d.tokens_per_sec  / tpsMax  * 100, 100) + "%";
+
+  // roofline pill
+  const bp = $("bound-pill");
+  if (d.is_memory_bound) {
+    bp.textContent = "▼ Memory-bound";
+    bp.className   = "roofline-pill mem-bound";
+  } else {
+    bp.textContent = "◆ Compute-bound";
+    bp.className   = "roofline-pill compute-bound";
+  }
+
+  // ── Effective batch / concurrency ───────────────────────────────────────
+  const bs   = +$("s-batch").value;
+  const gpus = +$("s-gpus").value;
+  if (mode === "inference") {
+    animateNum("eff-batch-num", bs * gpus, 0);
+    $("eff-batch-eq").textContent = `= ${bs} req × ${gpus} GPU${gpus>1?"s":""}`;
+  } else {
+    animateNum("eff-batch-num", d.effective_batch_size, 0);
+    const acc = +$("s-acc").value;
+    $("eff-batch-eq").textContent =
+      `= ${bs} batch × ${acc} grad_acc × ${gpus} GPU${gpus>1?"s":""}`;
+    $("lr-rule-txt").textContent = d.lr_rule === "linear"
+      ? "Linear (Goyal 2017)"
+      : "Square-root (conservative)";
+  }
+
+  // ── Warnings ────────────────────────────────────────────────────────────
+  const wl    = $("warn-list");
+  const nw    = $("no-warn");
+  wl.innerHTML = "";
+  if (d.warnings.length === 0) {
+    const ok = document.createElement("div");
+    ok.className = "no-warn";
+    ok.textContent = "All settings are within safe limits";
+    wl.appendChild(ok);
+  } else {
+    d.warnings.forEach(w => {
+      const item = document.createElement("div");
+      item.className = "warn-item";
+      item.innerHTML = `<span class="warn-icon">⚠</span><span>${w}</span>`;
+      wl.appendChild(item);
+    });
+  }
+}
+
+// ── Hardware detection ───────────────────────────────────────────────────────
+async function detectHardware() {
+  try {
+    const resp = await fetch("/hardware");
+    const d    = await resp.json();
+    const lbl  = $("hw-label");
+    const dot  = $("gpu-dot");
+
+    if (!d.is_cpu_only && d.gpus.length > 0) {
+      const g = d.gpus[0];
+      lbl.textContent = `${g.name}  ·  ${fmt(g.total_mb/1024,0)} GB`;
+      dot.style.background    = "var(--green)";
+      dot.style.boxShadow     = "0 0 6px var(--green)";
+      // auto-select VRAM size
+      const sel = $("s-vram");
+      const found = [...sel.options].find(o => Math.abs(+o.value - g.total_mb) < 2048);
+      if (found) sel.value = found.value;
+    } else {
+      lbl.innerHTML = "<span class='cpu-label'>CPU only — no CUDA GPU detected</span>";
+      dot.style.background = "var(--amber)";
+      dot.style.boxShadow  = "0 0 6px var(--amber)";
+    }
+  } catch {
+    $("hw-label").textContent = "Hardware unavailable";
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+(async () => {
+  await detectHardware();
+  runPredict();
+})();
+</script>
+</body>
+</html>
