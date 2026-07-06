@@ -73,7 +73,15 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "SIM"]
-ignore = ["ANN101", "ANN102", "ANN401"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: helpers/fixtures don't need full annotations; nested-with is fine.
+"tests/**" = ["ANN", "SIM117"]
+# Example scripts and paper figures are illustrative, not library code:
+# allow print() and single-letter math variable names (N, D, F, ...).
+"examples/**" = ["ANN", "T201", "N"]
+"paper/**" = ["ANN", "T201", "N"]
 
 [tool.mypy]
 python_version = "3.9"

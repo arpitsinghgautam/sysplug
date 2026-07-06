@@ -53,12 +53,12 @@ def main() -> None:
         meas = [r["measured_sps"] for r in pts]
         pred = [r.get("pred_sps_cal", float("nan")) for r in pts]
         ax.plot(bs, meas, marker="o", color=color, label=f"{cfg} (measured)")
-        ax.plot(bs, pred, marker="x", linestyle="--", color=color,
-                label=f"{cfg} (SysPlug)")
+        ax.plot(bs, pred, marker="x", linestyle="--", color=color, label=f"{cfg} (SysPlug)")
     ax.set_xlabel("Effective Batch Size")
     ax.set_ylabel("Throughput (samples/s)")
-    ax.set_title(f"Measured vs. Predicted Throughput\n{gpu} (calibrated MAPE {cal_mape:.1f}%)",
-                 fontsize=9)
+    ax.set_title(
+        f"Measured vs. Predicted Throughput\n{gpu} (calibrated MAPE {cal_mape:.1f}%)", fontsize=9
+    )
     ax.legend(fontsize=7)
 
     # Right: roofline that underlies the model (batch-aware arithmetic intensity).
@@ -76,8 +76,10 @@ def main() -> None:
     ax.loglog(ai, attainable, "k--", label="Attainable")
     ax.set_xlabel("Arithmetic Intensity (FLOP/byte)")
     ax.set_ylabel("Performance (TFLOP/s)")
-    ax.set_title("Roofline (weights reused across batch\n$\\Rightarrow$ intensity grows with batch)",
-                 fontsize=9)
+    ax.set_title(
+        "Roofline (weights reused across batch\n$\\Rightarrow$ intensity grows with batch)",
+        fontsize=9,
+    )
     ax.legend(fontsize=7)
 
     plt.tight_layout()

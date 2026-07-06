@@ -32,7 +32,7 @@ def _check_positive_int(value: Any, name: str) -> int:
     try:
         int_val = int(value)
     except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a positive integer, got {value!r}")
+        raise ValueError(f"{name} must be a positive integer, got {value!r}") from None
     if int_val <= 0:
         raise ValueError(f"{name} must be a positive integer, got {int_val}")
     return int_val
@@ -54,7 +54,7 @@ def _check_positive_float(value: Any, name: str) -> float:
     try:
         float_val = float(value)
     except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a positive float, got {value!r}")
+        raise ValueError(f"{name} must be a positive float, got {value!r}") from None
     if float_val <= 0:
         raise ValueError(f"{name} must be a positive float, got {float_val}")
     return float_val
@@ -76,9 +76,7 @@ def _check_in_set(value: Any, name: str, valid: set[str]) -> str:
     """
     str_val = str(value).lower()
     if str_val not in valid:
-        raise ValueError(
-            f"{name} must be one of {sorted(valid)}, got {value!r}"
-        )
+        raise ValueError(f"{name} must be one of {sorted(valid)}, got {value!r}")
     return str_val
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+
 import pytest
 
 from sysplug.utils.scaling_rules import (
@@ -51,6 +52,7 @@ class TestSqrtLRScale:
 
     def test_correct_ratio(self) -> None:
         import math
+
         lr = sqrt_lr_scale(1e-4, 32, 64)
         expected = 1e-4 * math.sqrt(64 / 32)
         assert lr == pytest.approx(expected, rel=1e-6)

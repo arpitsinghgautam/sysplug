@@ -25,7 +25,6 @@ import statistics
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import torch
 
@@ -33,7 +32,7 @@ from sysplug.memory_model import MemoryModel
 from sysplug.throughput_model import ThroughputModel
 
 # GPT-2 family configs (n_embd, n_layer, n_head) — real architectures.
-_CONFIGS: Dict[str, Dict[str, int]] = {
+_CONFIGS: dict[str, dict[str, int]] = {
     "gpt2-small": {"n_embd": 768, "n_layer": 12, "n_head": 12},
     "gpt2-medium": {"n_embd": 1024, "n_layer": 24, "n_head": 16},
     "gpt2-large": {"n_embd": 1280, "n_layer": 36, "n_head": 20},
@@ -61,7 +60,7 @@ class Measurement:
     error: str = ""
 
 
-def _build_model(cfg_name: str, vocab_size: int = 50257) -> "torch.nn.Module":
+def _build_model(cfg_name: str, vocab_size: int = 50257) -> torch.nn.Module:
     """Build a random-init GPT-2 model of the named size (no download)."""
     from transformers import GPT2Config, GPT2LMHeadModel
 
@@ -76,7 +75,7 @@ def _build_model(cfg_name: str, vocab_size: int = 50257) -> "torch.nn.Module":
     return GPT2LMHeadModel(config)
 
 
-def _precision_dtype(precision: str) -> Optional[torch.dtype]:
+def _precision_dtype(precision: str) -> torch.dtype | None:
     return {
         "bf16": torch.bfloat16,
         "fp16": torch.float16,
@@ -123,28 +122,28 @@ def _measure_one(
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(device)
 
-        def one_step() -> None:
+        def one_step(net: torch.nn.Module, opt: torch.optim.Optimizer) -> None:
             ids = torch.randint(0, vocab, (batch_size, seq_len), device=device)
-            optim.zero_grad(set_to_none=True)
+            opt.zero_grad(set_to_none=True)
             if dtype is not None:
                 with torch.autocast(device_type="cuda", dtype=dtype):
-                    out = model(input_ids=ids, labels=ids)
+                    out = net(input_ids=ids, labels=ids)
                     loss = out.loss
             else:
-                out = model(input_ids=ids, labels=ids)
+                out = net(input_ids=ids, labels=ids)
                 loss = out.loss
             loss.backward()
-            optim.step()
+            opt.step()
 
         # Warmup (also triggers cuDNN autotune / allocator growth)
         for _ in range(3):
-            one_step()
+            one_step(model, optim)
         torch.cuda.synchronize(device)
 
-        times: List[float] = []
+        times: list[float] = []
         for _ in range(steps):
             t0 = time.perf_counter()
-            one_step()
+            one_step(model, optim)
             torch.cuda.synchronize(device)
             times.append(time.perf_counter() - t0)
 
@@ -172,14 +171,14 @@ def _measure_one(
 
 
 def run(
-    configs: List[str],
-    batch_sizes: List[int],
+    configs: list[str],
+    batch_sizes: list[int],
     seq_len: int,
     steps: int,
     precision: str,
     seed: int,
     mem_fraction: float = 0.9,
-) -> Dict:
+) -> dict:
     device = torch.device("cuda")
     # Cap the caching allocator so an over-budget config raises a clean
     # OutOfMemoryError at the PyTorch level. Without this, on Windows/WDDM the
@@ -188,7 +187,7 @@ def run(
     if 0.0 < mem_fraction < 1.0:
         torch.cuda.set_per_process_memory_fraction(mem_fraction, 0)
     gpu_name = torch.cuda.get_device_name(0)
-    measurements: List[Measurement] = []
+    measurements: list[Measurement] = []
 
     for cfg in configs:
         for bs in batch_sizes:
@@ -216,7 +215,7 @@ def run(
     }
 
 
-def _compare_and_calibrate(results: Dict) -> Dict:
+def _compare_and_calibrate(results: dict) -> dict:
     """Compare measurements to sysplug predictions and fit calibration."""
     gpu_name = results["gpu_name"]
     seq_len = results["seq_len"]
@@ -245,22 +244,25 @@ def _compare_and_calibrate(results: Dict) -> Dict:
             hidden_size=m["hidden_size"],
             num_layers=m["num_layers"],
         )
-        rows.append({
-            "config": m["config"],
-            "batch_size": m["batch_size"],
-            "measured_sps": m["samples_per_sec"],
-            "pred_sps_uncal": tp_est.samples_per_sec,
-            "measured_mib_alloc": m["peak_mib_allocated"],
-            "measured_mib_reserved": m["peak_mib_reserved"],
-            "pred_mib": mem_est.peak_memory_mb,
-        })
+        rows.append(
+            {
+                "config": m["config"],
+                "batch_size": m["batch_size"],
+                "measured_sps": m["samples_per_sec"],
+                "pred_sps_uncal": tp_est.samples_per_sec,
+                "measured_mib_alloc": m["peak_mib_allocated"],
+                "measured_mib_reserved": m["peak_mib_reserved"],
+                "pred_mib": mem_est.peak_memory_mb,
+            }
+        )
 
     # Fit throughput calibration per config (step-time linear fit).
     calibrated = {}
     for cfg in {r["config"] for r in rows}:
         pts = [
             {"effective_batch_size": r["batch_size"], "measured_samples_per_sec": r["measured_sps"]}
-            for r in rows if r["config"] == cfg
+            for r in rows
+            if r["config"] == cfg
         ]
         if len(pts) >= 2:
             t = ThroughputModel(gpu_name=gpu_name, gpu_count=1)
@@ -268,7 +270,8 @@ def _compare_and_calibrate(results: Dict) -> Dict:
             for r in rows:
                 if r["config"] == cfg:
                     params = next(
-                        mm["param_count"] for mm in ok
+                        mm["param_count"]
+                        for mm in ok
                         if mm["config"] == cfg and mm["batch_size"] == r["batch_size"]
                     )
                     r["pred_sps_cal"] = t.predict(
@@ -277,8 +280,9 @@ def _compare_and_calibrate(results: Dict) -> Dict:
             calibrated[cfg] = t._empirical_coeffs  # noqa: SLF001
 
     def mape(pred_key: str) -> float:
-        errs = [abs(r[pred_key] - r["measured_sps"]) / r["measured_sps"]
-                for r in rows if pred_key in r]
+        errs = [
+            abs(r[pred_key] - r["measured_sps"]) / r["measured_sps"] for r in rows if pred_key in r
+        ]
         return 100.0 * statistics.mean(errs) if errs else float("nan")
 
     def mem_mape(meas_key: str) -> float:
@@ -306,21 +310,35 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=20)
     ap.add_argument("--precision", default="bf16", choices=["bf16", "fp16", "fp32"])
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--mem-fraction", type=float, default=0.9,
-                    help="Cap the CUDA allocator to this fraction of total VRAM "
-                         "so over-budget configs OOM cleanly (avoids WDDM spill).")
+    ap.add_argument(
+        "--mem-fraction",
+        type=float,
+        default=0.9,
+        help="Cap the CUDA allocator to this fraction of total VRAM "
+        "so over-budget configs OOM cleanly (avoids WDDM spill).",
+    )
     ap.add_argument("--out", default="results/gpu_measurements.json")
     args = ap.parse_args()
 
     if not torch.cuda.is_available():
         raise SystemExit("CUDA GPU required for measurement.")
 
-    print(f"GPU: {torch.cuda.get_device_name(0)}  |  torch {torch.__version__} / CUDA {torch.version.cuda}")
-    print(f"Sweep: configs={args.configs} batches={args.batch_sizes} seq={args.seq} "
-          f"precision={args.precision} steps={args.steps}\n")
+    print(
+        f"GPU: {torch.cuda.get_device_name(0)}  |  "
+        f"torch {torch.__version__} / CUDA {torch.version.cuda}"
+    )
+    print(
+        f"Sweep: configs={args.configs} batches={args.batch_sizes} seq={args.seq} "
+        f"precision={args.precision} steps={args.steps}\n"
+    )
 
     results = run(
-        args.configs, args.batch_sizes, args.seq, args.steps, args.precision, args.seed,
+        args.configs,
+        args.batch_sizes,
+        args.seq,
+        args.steps,
+        args.precision,
+        args.seed,
         args.mem_fraction,
     )
     summary = _compare_and_calibrate(results)
@@ -331,16 +349,24 @@ def main() -> None:
     out.write_text(json.dumps(results, indent=2))
 
     print("\n=== sysplug prediction vs measurement ===")
-    print(f"{'config':>12} {'bs':>4} {'meas sps':>10} {'pred(cal)':>10} "
-          f"{'meas MiB':>9} {'pred MiB':>9}")
+    print(
+        f"{'config':>12} {'bs':>4} {'meas sps':>10} {'pred(cal)':>10} "
+        f"{'meas MiB':>9} {'pred MiB':>9}"
+    )
     for r in summary["rows"]:
-        print(f"{r['config']:>12} {r['batch_size']:>4} {r['measured_sps']:>10.1f} "
-              f"{r.get('pred_sps_cal', float('nan')):>10.1f} "
-              f"{r['measured_mib_reserved']:>9.0f} {r['pred_mib']:>9.0f}")
-    print(f"\nThroughput MAPE  uncalibrated: {summary['throughput_mape_uncalibrated_pct']:.1f}%  "
-          f"calibrated: {summary['throughput_mape_calibrated_pct']:.1f}%")
-    print(f"Memory MAPE  vs allocated: {summary['memory_mape_vs_allocated_pct']:.1f}%  "
-          f"vs reserved: {summary['memory_mape_vs_reserved_pct']:.1f}%")
+        print(
+            f"{r['config']:>12} {r['batch_size']:>4} {r['measured_sps']:>10.1f} "
+            f"{r.get('pred_sps_cal', float('nan')):>10.1f} "
+            f"{r['measured_mib_reserved']:>9.0f} {r['pred_mib']:>9.0f}"
+        )
+    print(
+        f"\nThroughput MAPE  uncalibrated: {summary['throughput_mape_uncalibrated_pct']:.1f}%  "
+        f"calibrated: {summary['throughput_mape_calibrated_pct']:.1f}%"
+    )
+    print(
+        f"Memory MAPE  vs allocated: {summary['memory_mape_vs_allocated_pct']:.1f}%  "
+        f"vs reserved: {summary['memory_mape_vs_reserved_pct']:.1f}%"
+    )
     print(f"Peak achieved: {summary['peak_achieved_tflops']:.1f} TFLOPS ({args.precision})")
     print(f"\nSaved -> {out}")
 

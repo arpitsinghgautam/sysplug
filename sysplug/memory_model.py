@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -123,7 +123,7 @@ def _params_from_name(model_name: str) -> int:
     )
 
 
-def _infer_hidden_layers(param_count: int) -> Tuple[int, int]:
+def _infer_hidden_layers(param_count: int) -> tuple[int, int]:
     """Infer transformer ``(hidden_size, num_layers)`` from a parameter count.
 
     Uses the standard decoder relation ``params ≈ 12 · layers · hidden²`` with an
@@ -178,7 +178,7 @@ class MemoryBreakdown:
             + self.framework_overhead_mb
         )
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Return the breakdown as a plain dictionary."""
         return {
             "parameters_mb": self.parameters_mb,
@@ -289,9 +289,9 @@ class MemoryModel:
     @staticmethod
     def _infer_arch(
         param_count: int,
-        hidden_dim: Optional[int],
-        num_layers: Optional[int],
-    ) -> Tuple[int, int]:
+        hidden_dim: int | None,
+        num_layers: int | None,
+    ) -> tuple[int, int]:
         """Infer hidden_dim and num_layers from param count when not provided.
 
         Only the missing dimension(s) are inferred; explicit values pass
@@ -304,9 +304,7 @@ class MemoryModel:
         )
 
     @staticmethod
-    def _optimizer_states_mb(
-        param_count: int, optimizer: str, parallelism: str
-    ) -> float:
+    def _optimizer_states_mb(param_count: int, optimizer: str, parallelism: str) -> float:
         """Compute optimizer-state memory in MiB.
 
         AdamW/Adam always store two FP32 moments per parameter.
@@ -317,7 +315,7 @@ class MemoryModel:
         fp32_param_mb = param_count * 4.0 / 1024 / 1024  # FP32 copy
 
         if optimizer in {"adamw", "adam"}:
-            opt_mb = 2.0 * fp32_param_mb   # m (fp32) + v (fp32)
+            opt_mb = 2.0 * fp32_param_mb  # m (fp32) + v (fp32)
             # Master weights in mixed precision training
             opt_mb += fp32_param_mb
         elif optimizer == "adafactor":
@@ -397,8 +395,8 @@ class MemoryModel:
         parallelism: str = "none",
         use_gradient_checkpointing: bool = False,
         sequence_length: int = 512,
-        hidden_dim: Optional[int] = None,
-        num_layers: Optional[int] = None,
+        hidden_dim: int | None = None,
+        num_layers: int | None = None,
     ) -> MemoryEstimate:
         """Predict peak GPU memory for a single training step.
 
@@ -483,7 +481,7 @@ class MemoryModel:
     # Calibration
     # ------------------------------------------------------------------
 
-    def calibrate(self, measured_samples: List[dict[str, Any]]) -> float:
+    def calibrate(self, measured_samples: list[dict[str, Any]]) -> float:
         """Fit a linear correction factor from real measurements.
 
         Uses least squares to find the scalar ``c`` that minimises

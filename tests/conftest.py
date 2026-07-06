@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from sysplug.hardware import GPUSnapshot, HardwareSnapshot
 from sysplug.config import SysPlugConfig
+from sysplug.hardware import GPUSnapshot, HardwareSnapshot
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def mock_gpu() -> HardwareSnapshot:
     gpu = GPUSnapshot(
         device_id=0,
         gpu_name="NVIDIA A100-SXM4-40GB",
-        total_memory_mb=40960.0,   # 40 GiB
+        total_memory_mb=40960.0,  # 40 GiB
         used_memory_mb=512.0,
         free_memory_mb=40448.0,
         gpu_utilization_pct=0.0,

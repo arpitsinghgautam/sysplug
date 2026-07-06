@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sysplug.config import SysPlugConfig
 from sysplug.hardware import HardwareSnapshot
@@ -109,7 +109,7 @@ class ConfigSolver:
         self,
         memory_model: MemoryModel,
         throughput_model: ThroughputModel,
-        constraints: Optional[SolverConstraints] = None,
+        constraints: SolverConstraints | None = None,
         training_type: str = "supervised",
         objective: str = "balanced",
         verbose: bool = True,
@@ -127,11 +127,11 @@ class ConfigSolver:
 
     def solve(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         hardware: HardwareSnapshot,
         param_count: int,
         sequence_length: int = 512,
-        locked_params: Optional[Dict[str, Any]] = None,
+        locked_params: dict[str, Any] | None = None,
     ) -> SysPlugConfig:
         """Produce a feasible, optimised :class:`SysPlugConfig`.
 
@@ -155,8 +155,8 @@ class ConfigSolver:
         """
         cfg = self._normalise_config(config)
         locked = set(locked_params or {})
-        warnings: List[str] = []
-        notes: List[str] = []
+        warnings: list[str] = []
+        notes: list[str] = []
 
         # Available memory per GPU
         if hardware.gpus:
@@ -192,9 +192,7 @@ class ConfigSolver:
         # ------------------------------------------------------------------
         # Step 3: LR scaling when effective batch changed
         # ------------------------------------------------------------------
-        new_eff_batch = _effective_batch(
-            cfg["batch_size"], cfg["gradient_accumulation"], gpu_count
-        )
+        new_eff_batch = _effective_batch(cfg["batch_size"], cfg["gradient_accumulation"], gpu_count)
         if new_eff_batch != original_eff_batch and "learning_rate" not in locked:
             cfg["learning_rate"], lr_note = self._scale_lr(
                 original_lr, original_eff_batch, new_eff_batch
@@ -261,15 +259,15 @@ class ConfigSolver:
 
     def _ensure_feasible(
         self,
-        cfg: Dict[str, Any],
+        cfg: dict[str, Any],
         available_mb: float,
         param_count: int,
         gpu_count: int,
         sequence_length: int,
         locked: set[str],
-    ) -> tuple[Dict[str, Any], List[str]]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """Reduce batch/precision until memory fits within budget."""
-        notes: List[str] = []
+        notes: list[str] = []
         c = copy.deepcopy(cfg)
 
         def predict_mem() -> float:
@@ -349,15 +347,15 @@ class ConfigSolver:
 
     def _improve_throughput(
         self,
-        cfg: Dict[str, Any],
+        cfg: dict[str, Any],
         available_mb: float,
         param_count: int,
         gpu_count: int,
         sequence_length: int,
         locked: set[str],
-    ) -> tuple[Dict[str, Any], List[str]]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """Try to increase throughput while staying within memory budget."""
-        notes: List[str] = []
+        notes: list[str] = []
         c = copy.deepcopy(cfg)
 
         def predict_mem(batch: int, prec: str, grad_acc: int) -> float:
@@ -434,23 +432,19 @@ class ConfigSolver:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _stability_warnings(cfg: Dict[str, Any]) -> List[str]:
+    def _stability_warnings(cfg: dict[str, Any]) -> list[str]:
         """Emit warnings for known dangerous hyperparameter combinations."""
-        warns: List[str] = []
+        warns: list[str] = []
 
         lr = cfg.get("learning_rate", 0.0)
         precision = cfg.get("precision", "bf16")
         training_type = cfg.get("training_type", "supervised")
         batch_size = cfg.get("batch_size", 8)
         grad_acc = cfg.get("gradient_accumulation", 1)
-        grad_clip = cfg.get("max_grad_norm", None)
+        grad_clip = cfg.get("max_grad_norm")
 
         # High LR + fp16 without gradient clipping is risky
-        if (
-            lr > 1e-3
-            and precision == "fp16"
-            and (grad_clip is None or float(grad_clip) > 5.0)
-        ):
+        if lr > 1e-3 and precision == "fp16" and (grad_clip is None or float(grad_clip) > 5.0):
             warns.append(
                 f"LR {lr:.1e} with fp16 and no gradient clipping is risky. "
                 "Set max_grad_norm ≤ 1.0 or switch to bf16."
@@ -477,9 +471,9 @@ class ConfigSolver:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _normalise_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalise_config(config: dict[str, Any]) -> dict[str, Any]:
         """Fill missing config keys with sensible defaults."""
-        defaults: Dict[str, Any] = {
+        defaults: dict[str, Any] = {
             "batch_size": 8,
             "gradient_accumulation": 1,
             "learning_rate": 1e-4,

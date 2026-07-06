@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Deque, Dict, List, Tuple
+from typing import Any
 
 from sysplug.advisor import Advisor
 
@@ -32,7 +32,7 @@ class PPOConfig:
     mini_batch_size: int
     gradient_accumulation: int
     learning_rate: float
-    notes: List[str]
+    notes: list[str]
 
 
 class RLHFAdvisor(Advisor):
@@ -65,12 +65,10 @@ class RLHFAdvisor(Advisor):
         super().__init__(*args, **kwargs)
         self._reward_window = reward_window
         self._kl_threshold = kl_threshold
-        self._rewards: Deque[Tuple[int, float, float]] = deque(maxlen=reward_window)
-        self._kl_divs: Deque[Tuple[int, float]] = deque(maxlen=reward_window)
+        self._rewards: deque[tuple[int, float, float]] = deque(maxlen=reward_window)
+        self._kl_divs: deque[tuple[int, float]] = deque(maxlen=reward_window)
 
-    def record_reward(
-        self, step: int, mean_reward: float, reward_std: float = 0.0
-    ) -> None:
+    def record_reward(self, step: int, mean_reward: float, reward_std: float = 0.0) -> None:
         """Record reward statistics at a training step.
 
         Args:
@@ -122,7 +120,7 @@ class RLHFAdvisor(Advisor):
 
         return trend > 0 and latest_kl >= self._kl_threshold
 
-    def reward_summary(self) -> Dict[str, Any]:
+    def reward_summary(self) -> dict[str, Any]:
         """Return a summary of recorded reward and KL statistics.
 
         Returns:
@@ -130,8 +128,12 @@ class RLHFAdvisor(Advisor):
             ``reward_hacking_suspected``.
         """
         if not self._rewards:
-            return {"mean_reward": None, "reward_std": None,
-                    "latest_kl": None, "reward_hacking_suspected": False}
+            return {
+                "mean_reward": None,
+                "reward_std": None,
+                "latest_kl": None,
+                "reward_hacking_suspected": False,
+            }
         latest_reward = self._rewards[-1]
         latest_kl = self._kl_divs[-1][1] if self._kl_divs else None
         return {
@@ -201,7 +203,7 @@ class PPOConfigHelper:
         # Gradient accumulation to handle large rollout
         grad_acc = max(1, rollout_size // (mini_batch * num_envs))
 
-        notes: List[str] = []
+        notes: list[str] = []
         if mini_batch < 4:
             notes.append(
                 f"mini_batch_size={mini_batch} is small for PPO; "

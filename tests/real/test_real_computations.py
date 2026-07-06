@@ -17,7 +17,6 @@ import pytest
 import sysplug
 from sysplug.hardware import GPUSnapshot, HardwareSnapshot
 from sysplug.memory_model import MemoryModel
-from sysplug.solver import ConfigSolver, SolverConstraints
 from sysplug.stability import StabilitySignal
 from sysplug.throughput_model import ThroughputModel
 from sysplug.utils.scaling_rules import (
@@ -27,15 +26,16 @@ from sysplug.utils.scaling_rules import (
     warmup_steps_for_batch,
 )
 
-
 # ---------------------------------------------------------------------------
 # Hardware fixtures
 # ---------------------------------------------------------------------------
 
+
 def _hw(total_mb: float = 40_960, name: str = "A100") -> HardwareSnapshot:
     return HardwareSnapshot(
         gpus=[GPUSnapshot(0, name, total_mb, 0, total_mb, 0, 0, (8, 0), 2039)],
-        cpu_count=8, ram_total_mb=65_536,
+        cpu_count=8,
+        ram_total_mb=65_536,
     )
 
 
@@ -43,52 +43,52 @@ def _hw(total_mb: float = 40_960, name: str = "A100") -> HardwareSnapshot:
 # 1. Scaling rules — exact math
 # ---------------------------------------------------------------------------
 
-class TestScalingRulesMath:
 
-    def test_linear_scale_doubles_lr_for_doubled_batch(self):
+class TestScalingRulesMath:
+    def test_linear_scale_doubles_lr_for_doubled_batch(self) -> None:
         new_lr = linear_lr_scale(base_lr=1e-4, base_batch=64, new_batch=128)
         assert math.isclose(new_lr, 2e-4, rel_tol=1e-9)
 
-    def test_linear_scale_halves_lr_for_halved_batch(self):
+    def test_linear_scale_halves_lr_for_halved_batch(self) -> None:
         new_lr = linear_lr_scale(base_lr=1e-4, base_batch=128, new_batch=64)
         assert math.isclose(new_lr, 5e-5, rel_tol=1e-9)
 
-    def test_sqrt_scale_sqrt2_increase_for_doubled_batch(self):
+    def test_sqrt_scale_sqrt2_increase_for_doubled_batch(self) -> None:
         new_lr = sqrt_lr_scale(base_lr=1e-4, base_batch=64, new_batch=128)
         expected = 1e-4 * math.sqrt(128 / 64)
         assert math.isclose(new_lr, expected, rel_tol=1e-9)
 
-    def test_sqrt_always_less_than_linear_for_large_batch_increase(self):
+    def test_sqrt_always_less_than_linear_for_large_batch_increase(self) -> None:
         """Sqrt rule is more conservative than linear for any batch increase."""
         for factor in (2, 4, 8, 16):
             linear = linear_lr_scale(1e-4, 32, 32 * factor)
             sq = sqrt_lr_scale(1e-4, 32, 32 * factor)
             assert sq < linear
 
-    def test_warmup_steps_inversely_proportional_to_batch(self):
+    def test_warmup_steps_inversely_proportional_to_batch(self) -> None:
         """Doubling batch size should halve warmup steps."""
         w1 = warmup_steps_for_batch(100, base_batch=32, new_batch=32)
         w2 = warmup_steps_for_batch(100, base_batch=32, new_batch=64)
         assert w2 == w1 // 2
 
-    def test_recommended_rule_sft_small_batch(self):
+    def test_recommended_rule_sft_small_batch(self) -> None:
         assert recommended_lr_rule("sft", batch_size=128) == "linear"
 
-    def test_recommended_rule_sft_large_batch(self):
+    def test_recommended_rule_sft_large_batch(self) -> None:
         assert recommended_lr_rule("sft", batch_size=512) == "sqrt"
 
-    def test_recommended_rule_rlhf_always_sqrt(self):
+    def test_recommended_rule_rlhf_always_sqrt(self) -> None:
         for batch in (8, 32, 128, 512):
             assert recommended_lr_rule("rlhf", batch_size=batch) == "sqrt"
 
-    def test_recommended_rule_grpo_always_sqrt(self):
+    def test_recommended_rule_grpo_always_sqrt(self) -> None:
         assert recommended_lr_rule("grpo", batch_size=64) == "sqrt"
 
-    def test_linear_scale_same_batch_returns_same_lr(self):
+    def test_linear_scale_same_batch_returns_same_lr(self) -> None:
         lr = linear_lr_scale(2e-5, 64, 64)
         assert math.isclose(lr, 2e-5, rel_tol=1e-9)
 
-    def test_sqrt_scale_same_batch_returns_same_lr(self):
+    def test_sqrt_scale_same_batch_returns_same_lr(self) -> None:
         lr = sqrt_lr_scale(2e-5, 64, 64)
         assert math.isclose(lr, 2e-5, rel_tol=1e-9)
 
@@ -97,61 +97,67 @@ class TestScalingRulesMath:
 # 2. Memory model — real predictions, monotonicity
 # ---------------------------------------------------------------------------
 
-class TestMemoryModelReal:
 
-    def test_more_params_more_memory(self):
+class TestMemoryModelReal:
+    def test_more_params_more_memory(self) -> None:
         """Monotonicity: larger model → more memory, always."""
         mm = MemoryModel(gpu_count=1)
         sizes = [10_000_000, 100_000_000, 1_000_000_000, 7_000_000_000]
-        preds = [mm.predict(p, batch_size=4, precision="bf16",
-                            optimizer="adamw").peak_memory_mb
-                 for p in sizes]
+        preds = [
+            mm.predict(p, batch_size=4, precision="bf16", optimizer="adamw").peak_memory_mb
+            for p in sizes
+        ]
         assert preds == sorted(preds), f"Not monotonically increasing: {preds}"
 
-    def test_more_batch_more_memory(self):
+    def test_more_batch_more_memory(self) -> None:
         mm = MemoryModel(gpu_count=1)
         batches = [1, 2, 4, 8, 16, 32]
-        preds = [mm.predict(125_000_000, bs, "bf16", "adamw").peak_memory_mb
-                 for bs in batches]
+        preds = [mm.predict(125_000_000, bs, "bf16", "adamw").peak_memory_mb for bs in batches]
         assert preds == sorted(preds), f"Not monotonically increasing: {preds}"
 
-    def test_adamw_more_memory_than_sgd(self):
+    def test_adamw_more_memory_than_sgd(self) -> None:
         mm = MemoryModel(gpu_count=1)
-        sgd   = mm.predict(125_000_000, 4, "bf16", "sgd").peak_memory_mb
+        sgd = mm.predict(125_000_000, 4, "bf16", "sgd").peak_memory_mb
         adamw = mm.predict(125_000_000, 4, "bf16", "adamw").peak_memory_mb
         assert adamw > sgd
 
-    def test_fp32_more_memory_than_int4(self):
+    def test_fp32_more_memory_than_int4(self) -> None:
         mm = MemoryModel(gpu_count=1)
         fp32 = mm.predict(125_000_000, 4, "fp32", "adamw").peak_memory_mb
         int4 = mm.predict(125_000_000, 4, "int4", "adamw").peak_memory_mb
         assert fp32 > int4
 
-    def test_no_parallelism_more_memory_than_zero3(self):
+    def test_no_parallelism_more_memory_than_zero3(self) -> None:
         mm_single = MemoryModel(gpu_count=1)
-        mm_zero3  = MemoryModel(gpu_count=8)
-        single = mm_single.predict(7_000_000_000, 4, "bf16", "adamw",
-                                   "none").peak_memory_mb
-        z3     = mm_zero3.predict(7_000_000_000, 4, "bf16", "adamw",
-                                   "zero3").peak_memory_mb
+        mm_zero3 = MemoryModel(gpu_count=8)
+        single = mm_single.predict(7_000_000_000, 4, "bf16", "adamw", "none").peak_memory_mb
+        z3 = mm_zero3.predict(7_000_000_000, 4, "bf16", "adamw", "zero3").peak_memory_mb
         assert single > z3
 
-    def test_gc_reduces_memory(self):
+    def test_gc_reduces_memory(self) -> None:
         mm = MemoryModel(gpu_count=1)
-        no_gc = mm.predict(125_000_000, 32, "bf16", "adamw",
-                           use_gradient_checkpointing=False).peak_memory_mb
-        with_gc = mm.predict(125_000_000, 32, "bf16", "adamw",
-                              use_gradient_checkpointing=True).peak_memory_mb
+        no_gc = mm.predict(
+            125_000_000, 32, "bf16", "adamw", use_gradient_checkpointing=False
+        ).peak_memory_mb
+        with_gc = mm.predict(
+            125_000_000, 32, "bf16", "adamw", use_gradient_checkpointing=True
+        ).peak_memory_mb
         assert with_gc < no_gc
 
-    def test_calibration_roundtrip(self):
+    def test_calibration_roundtrip(self) -> None:
         """Calibrate to 1.3× factor, then prediction should be 1.3× original."""
         mm = MemoryModel(gpu_count=1)
         pred_base = mm.predict(125_000_000, 4, "bf16", "adamw").peak_memory_mb
-        samples = [{"param_count": 125_000_000, "batch_size": 4,
-                    "precision": "bf16", "optimizer": "adamw",
-                    "parallelism": "none",
-                    "measured_mb": pred_base * 1.3}]
+        samples = [
+            {
+                "param_count": 125_000_000,
+                "batch_size": 4,
+                "precision": "bf16",
+                "optimizer": "adamw",
+                "parallelism": "none",
+                "measured_mb": pred_base * 1.3,
+            }
+        ]
         factor = mm.calibrate(samples)
         pred_after = mm.predict(125_000_000, 4, "bf16", "adamw").peak_memory_mb
         assert math.isclose(pred_after, pred_base * 1.3, rel_tol=1e-3)
@@ -162,20 +168,20 @@ class TestMemoryModelReal:
 # 3. Throughput model — real predictions
 # ---------------------------------------------------------------------------
 
-class TestThroughputModelReal:
 
-    def test_predicts_positive_throughput(self):
+class TestThroughputModelReal:
+    def test_predicts_positive_throughput(self) -> None:
         tm = ThroughputModel(gpu_name="A100", gpu_count=1)
         est = tm.predict(32, 125_000_000, "bf16", 512)
         assert est.samples_per_sec > 0
 
-    def test_tokens_per_sec_consistent(self):
+    def test_tokens_per_sec_consistent(self) -> None:
         tm = ThroughputModel(gpu_name="A100", gpu_count=1)
         est = tm.predict(32, 125_000_000, "bf16", 512)
         expected = est.samples_per_sec * 512
         assert math.isclose(est.tokens_per_sec, expected, rel_tol=1e-9)
 
-    def test_more_gpus_more_throughput(self):
+    def test_more_gpus_more_throughput(self) -> None:
         for n in (1, 2, 4, 8):
             tm = ThroughputModel(gpu_name="A100", gpu_count=n)
             est = tm.predict(32, 125_000_000, "bf16", 512)
@@ -187,7 +193,7 @@ class TestThroughputModelReal:
         e4 = t4.predict(32, 125_000_000, "bf16", 512)
         assert e4.samples_per_sec > e1.samples_per_sec
 
-    def test_roofline_fields_on_estimate(self):
+    def test_roofline_fields_on_estimate(self) -> None:
         """Roofline metrics are embedded in the ThroughputEstimate."""
         tm = ThroughputModel(gpu_name="A100", gpu_count=1)
         est = tm.predict(32, 125_000_000, "bf16", 512)
@@ -197,13 +203,13 @@ class TestThroughputModelReal:
         assert est.attainable_tflops > 0
         assert est.arithmetic_intensity > 0
 
-    def test_known_gpu_lookup(self):
+    def test_known_gpu_lookup(self) -> None:
         for gpu_name in ("A100", "V100", "T4", "RTX 4090"):
             tm = ThroughputModel(gpu_name=gpu_name, gpu_count=1)
             est = tm.predict(8, 125_000_000, "bf16", 512)
             assert est.samples_per_sec > 0
 
-    def test_unknown_gpu_name_uses_default(self):
+    def test_unknown_gpu_name_uses_default(self) -> None:
         tm = ThroughputModel(gpu_name="MyCustomGPU-9000", gpu_count=1)
         est = tm.predict(8, 125_000_000, "bf16", 512)
         assert est.samples_per_sec > 0
@@ -213,9 +219,9 @@ class TestThroughputModelReal:
 # 4. Stability signal — real convergence scenarios
 # ---------------------------------------------------------------------------
 
-class TestStabilityRealScenarios:
 
-    def test_bert_style_training_stable(self):
+class TestStabilityRealScenarios:
+    def test_bert_style_training_stable(self) -> None:
         """Simulate a typical decreasing loss curve — should be stable."""
         sig = StabilitySignal(window_size=50)
         # Typical BERT loss: starts high, decreases, plateaus
@@ -226,7 +232,7 @@ class TestStabilityRealScenarios:
         assert not report.is_diverging
         assert report.recommended_action in {"ok", "reduce_batch"}
 
-    def test_lr_warmup_not_flagged_as_diverging(self):
+    def test_lr_warmup_not_flagged_as_diverging(self) -> None:
         """Loss increases briefly during warmup then drops — must not be flagged."""
         sig = StabilitySignal(window_size=20, diverge_threshold=0.30)
         # Warmup: loss goes up slightly (< 30% increase), then drops
@@ -238,7 +244,7 @@ class TestStabilityRealScenarios:
         # After the window sees mostly decreasing data, should not diverge
         assert not report.is_diverging
 
-    def test_exploding_loss_detected(self):
+    def test_exploding_loss_detected(self) -> None:
         """Explosive gradient causing NaN-free divergence must be caught."""
         sig = StabilitySignal(window_size=20)
         for step in range(10):
@@ -248,7 +254,7 @@ class TestStabilityRealScenarios:
         report = sig.check()
         assert report.is_diverging
 
-    def test_oscillating_lr_schedule_detected(self):
+    def test_oscillating_lr_schedule_detected(self) -> None:
         """Cyclic LR causing big oscillations should be flagged."""
         sig = StabilitySignal(window_size=20, oscillate_threshold=0.05)
         for step in range(20):
@@ -258,7 +264,7 @@ class TestStabilityRealScenarios:
         report = sig.check()
         assert report.is_oscillating
 
-    def test_multiple_check_calls_are_idempotent(self):
+    def test_multiple_check_calls_are_idempotent(self) -> None:
         """Calling check() multiple times without new data returns same result."""
         sig = StabilitySignal(window_size=10)
         for step in range(10):
@@ -269,7 +275,7 @@ class TestStabilityRealScenarios:
         assert r1.is_oscillating == r2.is_oscillating
         assert r1.recommended_action == r2.recommended_action
 
-    def test_window_rollover_correct(self):
+    def test_window_rollover_correct(self) -> None:
         """Data older than window_size must not affect current check."""
         sig = StabilitySignal(window_size=10)
         # Fill with diverging data (high values)
@@ -287,52 +293,53 @@ class TestStabilityRealScenarios:
 # 5. Advisor — full end-to-end real runs
 # ---------------------------------------------------------------------------
 
-class TestAdvisorEndToEnd:
 
-    def test_gpt2_on_a100_fits_in_memory(self):
+class TestAdvisorEndToEnd:
+    def test_gpt2_on_a100_fits_in_memory(self) -> None:
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
-        cfg = adv.suggest_config({"batch_size": 8, "optimizer": "adamw",
-                                   "precision": "bf16"})
+        cfg = adv.suggest_config({"batch_size": 8, "optimizer": "adamw", "precision": "bf16"})
         budget = 40_960 * 0.85
         assert cfg.predicted_peak_memory_mb <= budget, (
             f"Config does not fit: {cfg.predicted_peak_memory_mb:.0f} > {budget:.0f} MB"
         )
 
-    def test_repeated_suggest_is_deterministic(self):
+    def test_repeated_suggest_is_deterministic(self) -> None:
         """Same inputs → same outputs every time."""
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
-        cfg1 = adv.suggest_config({"batch_size": 4, "precision": "bf16",
-                                    "optimizer": "adamw", "learning_rate": 2e-5})
-        cfg2 = adv.suggest_config({"batch_size": 4, "precision": "bf16",
-                                    "optimizer": "adamw", "learning_rate": 2e-5})
+        cfg1 = adv.suggest_config(
+            {"batch_size": 4, "precision": "bf16", "optimizer": "adamw", "learning_rate": 2e-5}
+        )
+        cfg2 = adv.suggest_config(
+            {"batch_size": 4, "precision": "bf16", "optimizer": "adamw", "learning_rate": 2e-5}
+        )
         assert cfg1.batch_size == cfg2.batch_size
         assert cfg1.precision == cfg2.precision
         assert math.isclose(cfg1.learning_rate, cfg2.learning_rate, rel_tol=1e-9)
-        assert math.isclose(cfg1.predicted_peak_memory_mb,
-                            cfg2.predicted_peak_memory_mb, rel_tol=1e-9)
+        assert math.isclose(
+            cfg1.predicted_peak_memory_mb, cfg2.predicted_peak_memory_mb, rel_tol=1e-9
+        )
 
-    def test_what_if_consistent_with_suggest(self):
+    def test_what_if_consistent_with_suggest(self) -> None:
         """what_if with no change should produce same config as suggest_config."""
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
-        cfg = adv.suggest_config({"batch_size": 4, "precision": "bf16",
-                                   "optimizer": "adamw"})
+        cfg = adv.suggest_config({"batch_size": 4, "precision": "bf16", "optimizer": "adamw"})
         result = adv.what_if({})  # empty change
         # No changes → new config should equal original
         new = result.new_config
         assert new.batch_size == cfg.batch_size
         assert new.precision == cfg.precision
 
-    def test_to_dict_round_trips_batch_size(self):
+    def test_to_dict_round_trips_batch_size(self) -> None:
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
         cfg = adv.suggest_config({"batch_size": 4})
         d = cfg.to_dict()
         assert d["batch_size"] == cfg.batch_size
 
-    def test_monitor_runs_without_error(self):
+    def test_monitor_runs_without_error(self) -> None:
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
         adv.suggest_config({"batch_size": 4})
@@ -343,7 +350,7 @@ class TestAdvisorEndToEnd:
         events = mon.get_events()
         assert isinstance(events, list)
 
-    def test_config_to_deepspeed_bf16(self):
+    def test_config_to_deepspeed_bf16(self) -> None:
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
         cfg = adv.suggest_config({"precision": "bf16"})
@@ -351,17 +358,17 @@ class TestAdvisorEndToEnd:
         assert isinstance(ds, dict)
         assert "train_micro_batch_size_per_gpu" in ds
 
-    def test_config_apply_to_optimizer(self):
+    def test_config_apply_to_optimizer(self) -> None:
         try:
             import torch
+
             hw = _hw(40_960)
             adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
             cfg = adv.suggest_config({"learning_rate": 3e-5})
             model = torch.nn.Linear(4, 2)
             opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
             cfg.apply_to_optimizer(opt)
-            assert math.isclose(opt.param_groups[0]["lr"],
-                                cfg.learning_rate, rel_tol=1e-9)
+            assert math.isclose(opt.param_groups[0]["lr"], cfg.learning_rate, rel_tol=1e-9)
         except ImportError:
             pytest.skip("torch not available")
 
@@ -370,30 +377,33 @@ class TestAdvisorEndToEnd:
 # 6. Config serialisation consistency
 # ---------------------------------------------------------------------------
 
-class TestConfigSerialisation:
 
-    def test_to_dict_all_values_match_attributes(self):
+class TestConfigSerialisation:
+    def test_to_dict_all_values_match_attributes(self) -> None:
         hw = _hw(40_960)
         adv = sysplug.Advisor(model="gpt2", hardware=hw, verbose=False)
-        cfg = adv.suggest_config({"batch_size": 8, "precision": "bf16",
-                                   "optimizer": "adamw"})
+        cfg = adv.suggest_config({"batch_size": 8, "precision": "bf16", "optimizer": "adamw"})
         d = cfg.to_dict()
-        assert d["batch_size"]          == cfg.batch_size
+        assert d["batch_size"] == cfg.batch_size
         assert d["gradient_accumulation"] == cfg.gradient_accumulation
         assert d["effective_batch_size"] == cfg.effective_batch_size
-        assert d["learning_rate"]       == cfg.learning_rate
-        assert d["precision"]           == cfg.precision
-        assert d["optimizer"]           == cfg.optimizer
-        assert d["parallelism"]         == cfg.parallelism
+        assert d["learning_rate"] == cfg.learning_rate
+        assert d["precision"] == cfg.precision
+        assert d["optimizer"] == cfg.optimizer
+        assert d["parallelism"] == cfg.parallelism
         assert d["use_gradient_checkpointing"] == cfg.use_gradient_checkpointing
-        assert d["warnings"]            == list(cfg.warnings)
-        assert d["notes"]               == list(cfg.notes)
+        assert d["warnings"] == list(cfg.warnings)
+        assert d["notes"] == list(cfg.notes)
 
-    def test_deepspeed_zero2_config(self):
+    def test_deepspeed_zero2_config(self) -> None:
         from sysplug.config import SysPlugConfig
+
         cfg = SysPlugConfig(
-            batch_size=4, gradient_accumulation=2, precision="bf16",
-            parallelism="zero2", gpu_count=4,
+            batch_size=4,
+            gradient_accumulation=2,
+            precision="bf16",
+            parallelism="zero2",
+            gpu_count=4,
         )
         ds = cfg.to_deepspeed_config()
         assert ds["train_micro_batch_size_per_gpu"] == 4
@@ -402,24 +412,26 @@ class TestConfigSerialisation:
         assert ds.get("bf16", {}).get("enabled") is True
         assert ds.get("zero_optimization", {}).get("stage") == 2
 
-    def test_deepspeed_zero3_config(self):
+    def test_deepspeed_zero3_config(self) -> None:
         from sysplug.config import SysPlugConfig
-        cfg = SysPlugConfig(batch_size=2, parallelism="zero3", gpu_count=8,
-                            precision="fp16")
+
+        cfg = SysPlugConfig(batch_size=2, parallelism="zero3", gpu_count=8, precision="fp16")
         ds = cfg.to_deepspeed_config()
         assert ds.get("zero_optimization", {}).get("stage") == 3
         assert ds.get("fp16", {}).get("enabled") is True
 
-    def test_deepspeed_no_zero_config(self):
+    def test_deepspeed_no_zero_config(self) -> None:
         from sysplug.config import SysPlugConfig
+
         cfg = SysPlugConfig(batch_size=4, parallelism="none", precision="fp32")
         ds = cfg.to_deepspeed_config()
         assert "zero_optimization" not in ds
         assert "bf16" not in ds
         assert "fp16" not in ds
 
-    def test_deepspeed_base_config_merged(self):
+    def test_deepspeed_base_config_merged(self) -> None:
         from sysplug.config import SysPlugConfig
+
         cfg = SysPlugConfig(batch_size=4, precision="bf16", parallelism="none")
         base = {"scheduler": {"type": "WarmupLR"}}
         ds = cfg.to_deepspeed_config(base_config=base)

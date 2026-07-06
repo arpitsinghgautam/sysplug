@@ -39,18 +39,21 @@ def _run_mock_benchmark(n: int) -> list[ThroughputBenchResult]:
         est = model.predict(bs, 125_000_000, prec)
         actual_sps = est.samples_per_sec * rng.uniform(0.6, 1.4)
         error_pct = abs(est.samples_per_sec - actual_sps) / max(actual_sps, 1e-6) * 100
-        results.append(ThroughputBenchResult(
-            batch_size=bs,
-            precision=prec,
-            predicted_sps=est.samples_per_sec,
-            actual_sps=actual_sps,
-            error_pct=error_pct,
-        ))
+        results.append(
+            ThroughputBenchResult(
+                batch_size=bs,
+                precision=prec,
+                predicted_sps=est.samples_per_sec,
+                actual_sps=actual_sps,
+                error_pct=error_pct,
+            )
+        )
     return results
 
 
 def _run_real_benchmark(n: int) -> list[ThroughputBenchResult]:
     import torch
+
     if not torch.cuda.is_available():
         print("No GPU available. Use --mock.")
         raise SystemExit(1)
@@ -100,10 +103,7 @@ def main() -> None:
     parser.add_argument("--samples", type=int, default=20)
     args = parser.parse_args()
 
-    if args.mock:
-        results = _run_mock_benchmark(args.samples)
-    else:
-        results = _run_real_benchmark(args.samples)
+    results = _run_mock_benchmark(args.samples) if args.mock else _run_real_benchmark(args.samples)
 
     mape = sum(r.error_pct for r in results) / max(len(results), 1)
     print(f"Throughput MAPE: {mape:.1f}%  over {len(results)} samples")

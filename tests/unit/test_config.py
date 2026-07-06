@@ -47,8 +47,13 @@ class TestSysPlugConfigBasic:
         assert "Test warning" in s
 
     def test_to_deepspeed_config_basic(self) -> None:
-        cfg = SysPlugConfig(batch_size=4, gradient_accumulation=2, precision="bf16",
-                            gpu_count=1, parallelism="zero2")
+        cfg = SysPlugConfig(
+            batch_size=4,
+            gradient_accumulation=2,
+            precision="bf16",
+            gpu_count=1,
+            parallelism="zero2",
+        )
         ds = cfg.to_deepspeed_config()
         assert ds["train_micro_batch_size_per_gpu"] == 4
         assert ds["gradient_accumulation_steps"] == 2
@@ -86,6 +91,7 @@ class TestSysPlugConfigBasic:
 
     def test_to_training_arguments_raises_without_transformers(self) -> None:
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name: str, *args: object, **kwargs: object) -> object:
@@ -94,15 +100,17 @@ class TestSysPlugConfigBasic:
             return real_import(name, *args, **kwargs)
 
         import unittest.mock as mock
+
         cfg = SysPlugConfig(batch_size=4)
         with mock.patch("builtins.__import__", mock_import):
             with pytest.raises(ImportError, match="transformers"):
                 cfg.to_training_arguments(output_dir="/tmp")
 
     def test_to_training_arguments_with_transformers(self) -> None:
-        transformers = pytest.importorskip("transformers")
-        cfg = SysPlugConfig(batch_size=4, learning_rate=2e-5, precision="bf16",
-                            use_gradient_checkpointing=False)
+        pytest.importorskip("transformers")
+        cfg = SysPlugConfig(
+            batch_size=4, learning_rate=2e-5, precision="bf16", use_gradient_checkpointing=False
+        )
         ta = cfg.to_training_arguments(output_dir="/tmp/test")
         assert ta.per_device_train_batch_size == 4
         assert ta.learning_rate == pytest.approx(2e-5)
@@ -115,14 +123,17 @@ class TestSysPlugConfigBasic:
 
 
 class TestSysPlugConfigZeroStages:
-    @pytest.mark.parametrize("parallelism,expected_stage", [
-        ("zero1", 1),
-        ("zero2", 2),
-        ("zero3", 3),
-        ("fsdp", 3),
-        ("none", 0),
-        ("ddp", 0),
-    ])
+    @pytest.mark.parametrize(
+        "parallelism,expected_stage",
+        [
+            ("zero1", 1),
+            ("zero2", 2),
+            ("zero3", 3),
+            ("fsdp", 3),
+            ("none", 0),
+            ("ddp", 0),
+        ],
+    )
     def test_zero_stage_mapping(self, parallelism: str, expected_stage: int) -> None:
         cfg = SysPlugConfig(parallelism=parallelism)
         ds = cfg.to_deepspeed_config()

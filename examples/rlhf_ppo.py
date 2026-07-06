@@ -46,17 +46,19 @@ def main() -> None:
         kl_threshold=3.0,
     )
 
-    cfg = advisor.suggest_config({
-        "batch_size": 8,
-        "learning_rate": 1e-4,
-        "precision": "fp32",
-    })
+    cfg = advisor.suggest_config(
+        {
+            "batch_size": 8,
+            "learning_rate": 1e-4,
+            "precision": "fp32",
+        }
+    )
     print(f"\nRecommended config: {cfg.summary(verbose=False)}")
 
     # PPO batch configuration
     ppo_helper = PPOConfigHelper(advisor, min_rollout_size=32, max_ppo_epochs=4)
     ppo_cfg = ppo_helper.suggest(ppo_epochs=4, num_envs=1)
-    print(f"\nPPO config:")
+    print("\nPPO config:")
     print(f"  rollout_batch_size = {ppo_cfg.rollout_batch_size}")
     print(f"  mini_batch_size    = {ppo_cfg.mini_batch_size}")
     print(f"  ppo_epochs         = {ppo_cfg.ppo_epochs}")
@@ -91,10 +93,7 @@ def main() -> None:
         if step % 5 == 0:
             hacking = advisor.detect_reward_hacking()
             summary = advisor.reward_summary()
-            print(
-                f"  step={step:3d}  reward={mean_reward:.3f}  kl={kl:.2f}  "
-                f"hacking={hacking}"
-            )
+            print(f"  step={step:3d}  reward={mean_reward:.3f}  kl={kl:.2f}  hacking={hacking}")
 
     print("\n[DONE] RLHF/PPO example complete.")
     summary = advisor.reward_summary()

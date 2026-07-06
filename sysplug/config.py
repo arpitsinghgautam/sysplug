@@ -8,7 +8,7 @@ helper methods for applying the config to popular training frameworks.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -61,8 +61,8 @@ class SysPlugConfig:
     safety_margin_pct: float = 0.85
 
     # Advisor metadata
-    warnings: List[str] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     solver_objective: str = "balanced"
     training_type: str = "supervised"
     gpu_count: int = 1
@@ -73,7 +73,7 @@ class SysPlugConfig:
     # Serialisation
     # ------------------------------------------------------------------
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise the config to a plain dictionary.
 
         Returns:
@@ -133,7 +133,7 @@ class SysPlugConfig:
         except ImportError:
             raise ImportError(
                 "transformers is required. Install it with: pip install sysplug[hf]"
-            )
+            ) from None
 
         bf16 = self.precision == "bf16"
         fp16 = self.precision == "fp16"
@@ -148,7 +148,7 @@ class SysPlugConfig:
             **kwargs,
         )
 
-    def to_deepspeed_config(self, base_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def to_deepspeed_config(self, base_config: dict[str, Any] | None = None) -> dict[str, Any]:
         """Merge SysPlugConfig settings into a DeepSpeed config dict.
 
         Args:
@@ -164,13 +164,11 @@ class SysPlugConfig:
             >>> ds["train_micro_batch_size_per_gpu"]
             4
         """
-        config: Dict[str, Any] = dict(base_config or {})
+        config: dict[str, Any] = dict(base_config or {})
 
         config["train_micro_batch_size_per_gpu"] = self.batch_size
         config["gradient_accumulation_steps"] = self.gradient_accumulation
-        config["train_batch_size"] = (
-            self.batch_size * self.gradient_accumulation * self.gpu_count
-        )
+        config["train_batch_size"] = self.batch_size * self.gradient_accumulation * self.gpu_count
 
         # Precision flags
         if self.precision == "bf16":
@@ -185,8 +183,13 @@ class SysPlugConfig:
 
         # ZeRO stage
         zero_stage = {
-            "zero1": 1, "zero2": 2, "zero3": 3,
-            "fsdp": 3, "none": 0, "dp": 0, "ddp": 0,
+            "zero1": 1,
+            "zero2": 2,
+            "zero3": 3,
+            "fsdp": 3,
+            "none": 0,
+            "dp": 0,
+            "ddp": 0,
         }.get(self.parallelism, 0)
 
         if zero_stage > 0:

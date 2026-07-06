@@ -51,11 +51,11 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
-from sysplug.memory_model import _BYTES_PER_PARAM, _infer_hidden_layers, PrecisionMode
+from sysplug.memory_model import _BYTES_PER_PARAM, PrecisionMode, _infer_hidden_layers
 
 # ---------------------------------------------------------------------------
 # GPU spec table: peak dense tensor-core TFLOPS per precision.
@@ -65,6 +65,7 @@ from sysplug.memory_model import _BYTES_PER_PARAM, _infer_hidden_layers, Precisi
 # fp16 and bf16 both use FP32 accumulation in PyTorch AMP, so they are equal
 # for every entry. Sources: NVIDIA datasheets.
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class _GPUSpec:
@@ -76,33 +77,33 @@ class _GPUSpec:
 
 _GPU_SPECS: list[_GPUSpec] = [
     # Data-center
-    _GPUSpec("H200",     67.0,  989.0,  989.0),
-    _GPUSpec("H100",     67.0,  989.0,  989.0),
-    _GPUSpec("A100",     19.5,  312.0,  312.0),
-    _GPUSpec("A10G",      3.1,  125.0,  125.0),
-    _GPUSpec("A10",       3.1,  125.0,  125.0),
-    _GPUSpec("A30",       5.2,  165.0,  165.0),
-    _GPUSpec("A40",       7.4,  149.7,  149.7),
-    _GPUSpec("A6000",     7.4,  149.7,  149.7),
-    _GPUSpec("V100",     14.0,  125.0,  125.0),
-    _GPUSpec("T4",        8.1,   65.0,   65.0),
-    _GPUSpec("P100",      9.3,   18.7,    9.3),  # Pascal: no bf16 tensor cores
-    _GPUSpec("L40S",     18.0,  362.0,  362.0),
-    _GPUSpec("L40",       9.1,  181.0,  181.0),
-    _GPUSpec("L4",        3.1,  121.0,  121.0),
+    _GPUSpec("H200", 67.0, 989.0, 989.0),
+    _GPUSpec("H100", 67.0, 989.0, 989.0),
+    _GPUSpec("A100", 19.5, 312.0, 312.0),
+    _GPUSpec("A10G", 3.1, 125.0, 125.0),
+    _GPUSpec("A10", 3.1, 125.0, 125.0),
+    _GPUSpec("A30", 5.2, 165.0, 165.0),
+    _GPUSpec("A40", 7.4, 149.7, 149.7),
+    _GPUSpec("A6000", 7.4, 149.7, 149.7),
+    _GPUSpec("V100", 14.0, 125.0, 125.0),
+    _GPUSpec("T4", 8.1, 65.0, 65.0),
+    _GPUSpec("P100", 9.3, 18.7, 9.3),  # Pascal: no bf16 tensor cores
+    _GPUSpec("L40S", 18.0, 362.0, 362.0),
+    _GPUSpec("L40", 9.1, 181.0, 181.0),
+    _GPUSpec("L4", 3.1, 121.0, 121.0),
     # Consumer / workstation Ada
-    _GPUSpec("RTX 4090", 82.6,  165.2,  165.2),
-    _GPUSpec("RTX 4080", 48.7,   97.4,   97.4),
+    _GPUSpec("RTX 4090", 82.6, 165.2, 165.2),
+    _GPUSpec("RTX 4080", 48.7, 97.4, 97.4),
     _GPUSpec("RTX 6000 Ada", 91.1, 182.0, 182.0),
     # Consumer Ampere (bf16 == fp16 with FP32 accumulate; previously wrongly 0.0)
-    _GPUSpec("RTX 3090", 35.6,   71.0,   71.0),
-    _GPUSpec("RTX 3080", 29.8,   59.5,   59.5),
+    _GPUSpec("RTX 3090", 35.6, 71.0, 71.0),
+    _GPUSpec("RTX 3080", 29.8, 59.5, 59.5),
     # Workstation / laptop Blackwell.
     # RTX PRO 5000 values are effective sustained estimates anchored to
     # measured ~14 TFLOPS bf16 achievable on GPT-2 training on the laptop
     # (power/thermal-limited); calibrate per-device for accuracy.
     _GPUSpec("RTX PRO 5000", 22.0, 44.0, 44.0),
-    _GPUSpec("RTX 5090",  105.0, 210.0, 210.0),
+    _GPUSpec("RTX 5090", 105.0, 210.0, 210.0),
 ]
 
 _DEFAULT_SPEC = _GPUSpec("unknown", 10.0, 20.0, 20.0)
@@ -252,7 +253,7 @@ class ThroughputModel:
         self,
         gpu_name: str = "A100",
         gpu_count: int = 1,
-        bandwidth_gbps: Optional[float] = None,
+        bandwidth_gbps: float | None = None,
         calibration_factor: float = 1.0,
         step_overhead_sec: float = _STEP_OVERHEAD_SEC,
     ) -> None:
@@ -268,6 +269,7 @@ class ThroughputModel:
             self._bandwidth_gbps = _DEFAULT_BANDWIDTH_GBPS
             try:
                 from sysplug.hardware import _estimate_bandwidth
+
                 self._bandwidth_gbps = _estimate_bandwidth(gpu_name)
             except ImportError:
                 pass
@@ -276,7 +278,7 @@ class ThroughputModel:
 
         # Empirical step-time model (set after fit_empirical()):
         # step_time_sec ≈ slope · effective_batch_size + intercept
-        self._empirical_coeffs: Optional[Tuple[float, float]] = None
+        self._empirical_coeffs: tuple[float, float] | None = None
 
     # ------------------------------------------------------------------
     # Prediction
@@ -288,8 +290,8 @@ class ThroughputModel:
         model_size_params: int,
         precision: str = "bf16",
         sequence_length: int = 512,
-        hidden_size: Optional[int] = None,
-        num_layers: Optional[int] = None,
+        hidden_size: int | None = None,
+        num_layers: int | None = None,
     ) -> ThroughputEstimate:
         """Predict training throughput using the roofline model.
 
@@ -434,7 +436,7 @@ class ThroughputModel:
     # Calibration
     # ------------------------------------------------------------------
 
-    def calibrate_roofline(self, measured_samples: List[Dict[str, Any]]) -> float:
+    def calibrate_roofline(self, measured_samples: list[dict[str, Any]]) -> float:
         """Fit a scalar correction factor against real throughput measurements.
 
         Args:
@@ -491,7 +493,7 @@ class ThroughputModel:
         self._calibration_factor = max(0.01, min(10.0, factor))
         return self._calibration_factor
 
-    def fit_empirical(self, measured_samples: List[Dict[str, Any]]) -> None:
+    def fit_empirical(self, measured_samples: list[dict[str, Any]]) -> None:
         """Fit an empirical step-time model from real measurements.
 
         Fits ``step_time = slope · batch + intercept`` (via least squares) so
@@ -521,8 +523,8 @@ class ThroughputModel:
 
         # Convert to per-step time and fit step_time = slope·batch + intercept.
         step_times = batches / throughputs
-        A = np.column_stack([batches, np.ones_like(batches)])
-        coeffs, _, _, _ = np.linalg.lstsq(A, step_times, rcond=None)
+        design = np.column_stack([batches, np.ones_like(batches)])
+        coeffs, _, _, _ = np.linalg.lstsq(design, step_times, rcond=None)
         self._empirical_coeffs = (float(coeffs[0]), float(coeffs[1]))
 
     # ------------------------------------------------------------------

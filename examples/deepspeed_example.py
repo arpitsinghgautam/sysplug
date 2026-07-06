@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 
-import torch
 import torch.nn as nn
 
 import sysplug
@@ -29,12 +28,14 @@ def main() -> None:
         training_type="sft",
         verbose=True,
     )
-    cfg = advisor.suggest_config({
-        "batch_size": 4,
-        "learning_rate": 2e-5,
-        "precision": "bf16",
-        "parallelism": "zero2",
-    })
+    cfg = advisor.suggest_config(
+        {
+            "batch_size": 4,
+            "learning_rate": 2e-5,
+            "precision": "bf16",
+            "parallelism": "zero2",
+        }
+    )
 
     # Base DeepSpeed config (user-provided skeleton)
     base_ds_config: dict = {

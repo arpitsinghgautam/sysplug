@@ -7,10 +7,11 @@ gracefully to a CPU-only placeholder when no CUDA devices are available.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import warnings
+from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import Generator, List, Optional
 
 from sysplug.utils.logging import get_logger
 
@@ -21,14 +22,14 @@ log = get_logger()
 # Sources: NVIDIA official spec sheets.
 # ---------------------------------------------------------------------------
 _BANDWIDTH_TABLE: dict[str, float] = {
-    "A100": 2039.0,   # SXM4 80GB HBM2e
-    "H100": 3350.0,   # SXM5 80GB HBM3
+    "A100": 2039.0,  # SXM4 80GB HBM2e
+    "H100": 3350.0,  # SXM5 80GB HBM3
     "A10": 600.0,
     "A10G": 600.0,
     "A30": 933.0,
     "A40": 696.0,
     "A6000": 768.0,
-    "V100": 900.0,    # SXM2
+    "V100": 900.0,  # SXM2
     "T4": 300.0,
     "P100": 732.0,
     "RTX 4090": 1008.0,
@@ -78,8 +79,8 @@ class GPUSnapshot:
     memory_utilization_pct: float
     compute_capability: tuple[int, int]
     bandwidth_gbps: float
-    temperature_c: Optional[float] = None
-    power_draw_w: Optional[float] = None
+    temperature_c: float | None = None
+    power_draw_w: float | None = None
 
 
 @dataclass
@@ -95,7 +96,7 @@ class HardwareSnapshot:
         is_cpu_only: True when no CUDA GPUs were found.
     """
 
-    gpus: List[GPUSnapshot] = field(default_factory=list)
+    gpus: list[GPUSnapshot] = field(default_factory=list)
     cpu_count: int = 1
     ram_total_mb: float = 0.0
     ram_available_mb: float = 0.0
@@ -136,6 +137,7 @@ def _cpu_only_snapshot() -> HardwareSnapshot:
     """Build a placeholder HardwareSnapshot for CPU-only environments."""
     try:
         import psutil  # type: ignore[import]
+
         cpu_count = psutil.cpu_count(logical=True) or 1
         mem = psutil.virtual_memory()
         ram_total_mb = mem.total / 1024 / 1024
@@ -174,7 +176,7 @@ class HardwareProfiler:
 
     def __init__(
         self,
-        device_ids: Optional[list[int]] = None,
+        device_ids: list[int] | None = None,
         verbose: bool = True,
     ) -> None:
         self._device_ids = device_ids
@@ -273,18 +275,16 @@ class HardwareProfiler:
                 compute_cap = (0, 0)
 
             try:
-                temp: Optional[float] = float(
-                    pynvml.nvmlDeviceGetTemperature(
-                        handle, pynvml.NVML_TEMPERATURE_GPU
-                    )
+                temp: float | None = float(
+                    pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
                 )
             except pynvml.NVMLError:
                 temp = None
 
             try:
-                power: Optional[float] = float(
-                    pynvml.nvmlDeviceGetPowerUsage(handle)
-                ) / 1000.0  # mW -> W
+                power: float | None = (
+                    float(pynvml.nvmlDeviceGetPowerUsage(handle)) / 1000.0
+                )  # mW -> W
             except pynvml.NVMLError:
                 power = None
 
@@ -309,6 +309,7 @@ class HardwareProfiler:
         ram_available_mb = 0.0
         try:
             import psutil  # type: ignore[import]
+
             cpu_count = psutil.cpu_count(logical=True) or 1
             mem = psutil.virtual_memory()
             ram_total_mb = mem.total / 1024 / 1024
@@ -324,9 +325,7 @@ class HardwareProfiler:
             is_cpu_only=len(gpu_snaps) == 0,
         )
 
-    def poll(
-        self, interval_sec: float = 1.0
-    ) -> Generator[HardwareSnapshot, None, None]:
+    def poll(self, interval_sec: float = 1.0) -> Generator[HardwareSnapshot, None, None]:
         """Yield hardware snapshots at a fixed polling interval forever.
 
         Args:
@@ -348,7 +347,5 @@ class HardwareProfiler:
     def __del__(self) -> None:
         """Shut down pynvml when the profiler is garbage-collected."""
         if self._nvml_inited and self._nvml_available:
-            try:
+            with contextlib.suppress(Exception):
                 self._pynvml.nvmlShutdown()
-            except Exception:
-                pass

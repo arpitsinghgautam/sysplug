@@ -84,11 +84,13 @@ def main() -> None:
     suggest_p.add_argument("--optimizer", default="adamw")
     suggest_p.add_argument("--grad-acc", type=int, default=0)
     suggest_p.add_argument(
-        "--training-type", default="supervised",
+        "--training-type",
+        default="supervised",
         choices=["supervised", "sft", "dpo", "rlhf", "grpo"],
     )
     suggest_p.add_argument(
-        "--objective", default="balanced",
+        "--objective",
+        default="balanced",
         choices=["throughput", "memory", "balanced"],
     )
 
@@ -106,6 +108,7 @@ def main() -> None:
         _cmd_hardware(args)
     elif args.command == "version":
         import sysplug
+
         print(f"sysplug {sysplug.__version__}")
     else:
         parser.print_help()

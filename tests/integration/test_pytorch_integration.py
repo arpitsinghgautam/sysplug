@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 import pytest
 
 from sysplug import Advisor
@@ -19,9 +18,7 @@ class TestSysPlugContext:
             for step in range(10):
                 ctx.record(step=step, loss=1.0 - step * 0.05)
 
-    def test_context_passes_metrics_to_monitor(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_context_passes_metrics_to_monitor(self, mock_gpu: HardwareSnapshot) -> None:
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
         advisor.suggest_config({"batch_size": 4})
 
@@ -29,9 +26,7 @@ class TestSysPlugContext:
             for step in range(20):
                 ctx.record(step=step, loss=1.0, grad_norm=0.5)
 
-    def test_context_without_suggest_still_works(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_context_without_suggest_still_works(self, mock_gpu: HardwareSnapshot) -> None:
         """Context should not crash even if suggest_config wasn't called."""
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
         with SysPlugContext(advisor, check_interval_steps=10) as ctx:

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from sysplug import Advisor, SysPlugConfig
+import pytest
+
+from sysplug import Advisor
 from sysplug.hardware import HardwareSnapshot
 
 
@@ -39,6 +40,7 @@ class TestSysPlugTrainerCallback:
     def test_import_raises_without_transformers(self) -> None:
         """Should raise ImportError when transformers not installed."""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name: str, *args: object, **kwargs: object) -> object:
@@ -51,6 +53,7 @@ class TestSysPlugTrainerCallback:
                 from sysplug.integrations.huggingface import (
                     _require_transformers,
                 )
+
                 _require_transformers()
 
     def test_callback_on_train_begin_calls_suggest(
@@ -93,9 +96,7 @@ class TestSysPlugTrainerCallback:
         assert cb._stability_signal is not None
         assert cb._stability_signal.num_recorded_steps >= 1
 
-    def test_to_training_arguments_sets_correct_fields(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_to_training_arguments_sets_correct_fields(self, mock_gpu: HardwareSnapshot) -> None:
         """to_training_arguments should set batch_size and lr."""
         pytest.importorskip("transformers")
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)

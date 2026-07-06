@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import pytest
 
 from sysplug.hardware import GPUSnapshot, HardwareSnapshot
@@ -65,9 +64,7 @@ class TestOOMRecovery:
         result = solver.solve(config, hw, param_count=7_000_000_000)
         # Should have reduced batch size or precision
         assert (
-            result.batch_size < 8
-            or result.precision != "fp32"
-            or result.use_gradient_checkpointing
+            result.batch_size < 8 or result.precision != "fp32" or result.use_gradient_checkpointing
         )
 
     def test_oom_preserves_effective_batch_with_grad_acc(self) -> None:
@@ -193,8 +190,9 @@ class TestStabilityWarnings:
             "use_gradient_checkpointing": False,
         }
         # Lock precision so the solver cannot upgrade fp16→bf16 before warning check
-        result = solver.solve(config, hw, param_count=125_000_000,
-                              locked_params={"precision": "fp16"})
+        result = solver.solve(
+            config, hw, param_count=125_000_000, locked_params={"precision": "fp16"}
+        )
         # Should have a warning about high LR + fp16
         assert any("fp16" in w.lower() or "LR" in w for w in result.warnings)
 
@@ -233,6 +231,7 @@ class TestStabilityWarnings:
 class TestSolverOutput:
     def test_returns_sysplugconfig(self) -> None:
         from sysplug.config import SysPlugConfig
+
         solver, hw = make_solver()
         config = {
             "batch_size": 4,
@@ -288,8 +287,7 @@ class TestSolverOutput:
             "use_gradient_checkpointing": False,
         }
         result = solver.solve(
-            config, hw, param_count=7_000_000_000,
-            locked_params={"precision": "fp32"}
+            config, hw, param_count=7_000_000_000, locked_params={"precision": "fp32"}
         )
         # Precision must not be changed
         assert result.precision == "fp32"

@@ -14,12 +14,10 @@ from __future__ import annotations
 
 import argparse
 import csv
-import io
 import random
 import sys
 import time
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -91,14 +89,16 @@ def _run_real_benchmark(samples: list[dict]) -> list[BenchResult]:
         predicted_mb = pred.peak_memory_mb
         error_pct = abs(predicted_mb - actual_mb) / max(actual_mb, 1.0) * 100.0
 
-        results.append(BenchResult(
-            model_size=param_count,
-            batch_size=batch_size,
-            precision=precision,
-            predicted_mb=predicted_mb,
-            actual_mb=actual_mb,
-            error_pct=error_pct,
-        ))
+        results.append(
+            BenchResult(
+                model_size=param_count,
+                batch_size=batch_size,
+                precision=precision,
+                predicted_mb=predicted_mb,
+                actual_mb=actual_mb,
+                error_pct=error_pct,
+            )
+        )
 
     return results
 
@@ -123,14 +123,16 @@ def _run_mock_benchmark(samples: list[dict]) -> list[BenchResult]:
         actual_mb = predicted_mb * (0.7 + 0.6 * rng.random())
         error_pct = abs(predicted_mb - actual_mb) / max(actual_mb, 1.0) * 100.0
 
-        results.append(BenchResult(
-            model_size=sample["param_count"],
-            batch_size=sample["batch_size"],
-            precision=sample["precision"],
-            predicted_mb=predicted_mb,
-            actual_mb=actual_mb,
-            error_pct=error_pct,
-        ))
+        results.append(
+            BenchResult(
+                model_size=sample["param_count"],
+                batch_size=sample["batch_size"],
+                precision=sample["precision"],
+                predicted_mb=predicted_mb,
+                actual_mb=actual_mb,
+                error_pct=error_pct,
+            )
+        )
 
     return results
 
@@ -164,10 +166,7 @@ def main() -> None:
     print(f"Running {args.samples} benchmark samples ({'mock' if args.mock else 'real GPU'})...")
     start = time.perf_counter()
 
-    if args.mock:
-        results = _run_mock_benchmark(samples)
-    else:
-        results = _run_real_benchmark(samples)
+    results = _run_mock_benchmark(samples) if args.mock else _run_real_benchmark(samples)
 
     elapsed = time.perf_counter() - start
     mape = sum(r.error_pct for r in results) / len(results) if results else 0.0
@@ -177,19 +176,27 @@ def main() -> None:
         with open(args.output, "w", newline="") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["model_size", "batch_size", "precision",
-                             "predicted_mb", "actual_mb", "error_pct"],
+                fieldnames=[
+                    "model_size",
+                    "batch_size",
+                    "precision",
+                    "predicted_mb",
+                    "actual_mb",
+                    "error_pct",
+                ],
             )
             writer.writeheader()
             for r in results:
-                writer.writerow({
-                    "model_size": r.model_size,
-                    "batch_size": r.batch_size,
-                    "precision": r.precision,
-                    "predicted_mb": f"{r.predicted_mb:.2f}",
-                    "actual_mb": f"{r.actual_mb:.2f}",
-                    "error_pct": f"{r.error_pct:.2f}",
-                })
+                writer.writerow(
+                    {
+                        "model_size": r.model_size,
+                        "batch_size": r.batch_size,
+                        "precision": r.precision,
+                        "predicted_mb": f"{r.predicted_mb:.2f}",
+                        "actual_mb": f"{r.actual_mb:.2f}",
+                        "error_pct": f"{r.error_pct:.2f}",
+                    }
+                )
         print(f"Results written to {args.output}")
 
 

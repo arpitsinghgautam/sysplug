@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sysplug.stability import StabilitySignal, StabilityReport
+from sysplug.stability import StabilitySignal
 
 
 class TestNonFiniteLoss:
@@ -166,7 +166,6 @@ class TestStabilityEdgeCases:
             StabilitySignal(window_size=1)
 
     def test_nan_loss_not_recorded(self) -> None:
-        import math
         signal = StabilitySignal(window_size=5)
         signal.record_loss(0, float("nan"))
         signal.record_loss(1, 1.0)

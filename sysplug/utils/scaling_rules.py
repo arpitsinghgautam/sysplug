@@ -88,9 +88,7 @@ def sqrt_lr_scale(base_lr: float, base_batch: int, new_batch: int) -> float:
     return base_lr * math.sqrt(new_batch / base_batch)
 
 
-def warmup_steps_for_batch(
-    base_warmup: int, base_batch: int, new_batch: int
-) -> int:
+def warmup_steps_for_batch(base_warmup: int, base_batch: int, new_batch: int) -> int:
     """Scale warmup steps proportionally to the batch size ratio.
 
     When the effective batch size increases, fewer optimizer steps are taken

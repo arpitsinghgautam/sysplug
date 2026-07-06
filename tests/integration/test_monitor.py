@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
+
 import pytest
 
 from sysplug import Advisor, Monitor
 from sysplug.hardware import GPUSnapshot, HardwareSnapshot
-from sysplug.monitor import EventType, MonitorEvent
+from sysplug.monitor import EventType
 
 
 def make_advisor_with_config(hardware: HardwareSnapshot) -> Advisor:
@@ -25,9 +26,7 @@ class TestMonitorBasic:
                 mon.record(step=step, loss=1.0 - step * 0.05)
         assert isinstance(mon, Monitor)
 
-    def test_monitor_records_without_error(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_monitor_records_without_error(self, mock_gpu: HardwareSnapshot) -> None:
         advisor = make_advisor_with_config(mock_gpu)
         with advisor.monitor(check_interval_steps=5) as mon:
             for step in range(20):
@@ -42,9 +41,7 @@ class TestMonitorBasic:
         events = mon.get_events()
         assert isinstance(events, list)
 
-    def test_monitor_detects_diverging_loss(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_monitor_detects_diverging_loss(self, mock_gpu: HardwareSnapshot) -> None:
         advisor = make_advisor_with_config(mock_gpu)
         with advisor.monitor(check_interval_steps=5, reconfig_policy="warn-only") as mon:
             # Feed diverging loss
@@ -58,7 +55,9 @@ class TestMonitorBasic:
         assert EventType.DIVERGING_LOSS in types
 
     def test_monitor_suggest_policy(
-        self, mock_gpu: HardwareSnapshot, capsys: pytest.CaptureFixture  # type: ignore[type-arg]
+        self,
+        mock_gpu: HardwareSnapshot,
+        capsys: pytest.CaptureFixture,  # type: ignore[type-arg]
     ) -> None:
         """suggest policy should not raise even when loss diverges."""
         advisor = make_advisor_with_config(mock_gpu)
@@ -68,15 +67,10 @@ class TestMonitorBasic:
             time.sleep(0.3)
         # Just check it doesn't crash
 
-    def test_monitor_auto_apply_updates_config(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_monitor_auto_apply_updates_config(self, mock_gpu: HardwareSnapshot) -> None:
         """auto-apply policy may update the advisor's current config."""
         advisor = make_advisor_with_config(mock_gpu)
-        original_lr = advisor.current_config.learning_rate  # type: ignore[union-attr]
-        with advisor.monitor(
-            check_interval_steps=5, reconfig_policy="auto-apply"
-        ) as mon:
+        with advisor.monitor(check_interval_steps=5, reconfig_policy="auto-apply") as mon:
             for step in range(100):
                 mon.record(step=step, loss=1.0 + step * 0.3)  # bad divergence
             time.sleep(0.5)
@@ -88,6 +82,7 @@ class TestMonitorBasic:
         errors: list[Exception] = []
 
         with advisor.monitor(check_interval_steps=10) as mon:
+
             def worker(thread_id: int) -> None:
                 try:
                     for step in range(50):

@@ -12,7 +12,6 @@ Uses GPT-2 and a tiny synthetic dataset so it runs without a GPU.
 
 from __future__ import annotations
 
-import os
 import tempfile
 
 import torch
@@ -24,9 +23,9 @@ def main() -> None:
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
+            DataCollatorForLanguageModeling,
             Trainer,
             TrainingArguments,
-            DataCollatorForLanguageModeling,
         )
     except ImportError:
         print("transformers not installed. Run: pip install sysplug[hf]")
@@ -87,11 +86,13 @@ def main() -> None:
         )
 
         # Ask SysPlug for the optimal config
-        cfg = advisor.suggest_config({
-            "batch_size": base_args.per_device_train_batch_size,
-            "learning_rate": base_args.learning_rate,
-            "precision": "bf16" if torch.cuda.is_bf16_supported() else "fp32",
-        })
+        cfg = advisor.suggest_config(
+            {
+                "batch_size": base_args.per_device_train_batch_size,
+                "learning_rate": base_args.learning_rate,
+                "precision": "bf16" if torch.cuda.is_bf16_supported() else "fp32",
+            }
+        )
 
         # Update training args with recommended values
         optimised_args = TrainingArguments(

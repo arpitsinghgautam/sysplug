@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, List, Literal, Tuple
+from typing import Literal
 
 Action = Literal["reduce_lr", "increase_grad_clip", "reduce_batch", "ok"]
 
@@ -78,8 +78,8 @@ class StabilitySignal:
         self._oscillate_threshold = oscillate_threshold
         self._grad_norm_sigma = grad_norm_sigma
 
-        self._losses: Deque[Tuple[int, float]] = deque(maxlen=window_size)
-        self._grad_norms: Deque[Tuple[int, float]] = deque(maxlen=window_size)
+        self._losses: deque[tuple[int, float]] = deque(maxlen=window_size)
+        self._grad_norms: deque[tuple[int, float]] = deque(maxlen=window_size)
 
         # Sticky flag: a non-finite (NaN/Inf) loss is hard divergence and must
         # never be silently dropped. Once seen, the run is flagged as diverged
@@ -168,7 +168,7 @@ class StabilitySignal:
         # 2. Oscillation: normalised variance too high
         mean_loss = sum(losses) / len(losses)
         variance = sum((x - mean_loss) ** 2 for x in losses) / len(losses)
-        normalised_var = variance / (mean_loss ** 2 + 1e-8)
+        normalised_var = variance / (mean_loss**2 + 1e-8)
         is_oscillating = normalised_var > self._oscillate_threshold
 
         # 3. Gradient norm spike
@@ -197,9 +197,7 @@ class StabilitySignal:
             message = "Loss is oscillating with gradient norm spikes. Increase grad_clip."
         elif is_oscillating:
             action = "reduce_batch"
-            message = (
-                "Loss is oscillating. Consider reducing batch size or learning rate."
-            )
+            message = "Loss is oscillating. Consider reducing batch size or learning rate."
         elif grad_norm_spike:
             action = "increase_grad_clip"
             message = "Gradient norm spike detected. Consider tightening grad_clip."
@@ -235,7 +233,7 @@ class StabilitySignal:
         return latest > mean + self._grad_norm_sigma * std
 
     @staticmethod
-    def _compute_trend(losses: List[float]) -> float:
+    def _compute_trend(losses: list[float]) -> float:
         """Compute slope of losses via ordinary least squares."""
         n = len(losses)
         if n < 2:

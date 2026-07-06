@@ -43,11 +43,15 @@ class TinyLM(nn.Module):
     def log_prob(self, tokens: torch.Tensor) -> torch.Tensor:
         """Compute mean log-probability for the token sequence."""
         logits = self.forward(tokens)
-        return -F.cross_entropy(
-            logits.unsqueeze(1).expand(-1, tokens.size(1), -1).reshape(-1, logits.size(-1)),
-            tokens.reshape(-1),
-            reduction="none",
-        ).reshape(tokens.size(0), -1).mean(dim=-1)
+        return (
+            -F.cross_entropy(
+                logits.unsqueeze(1).expand(-1, tokens.size(1), -1).reshape(-1, logits.size(-1)),
+                tokens.reshape(-1),
+                reduction="none",
+            )
+            .reshape(tokens.size(0), -1)
+            .mean(dim=-1)
+        )
 
 
 def dpo_loss(
@@ -89,11 +93,13 @@ def main() -> None:
         objective="balanced",
         verbose=True,
     )
-    cfg = advisor.suggest_config({
-        "batch_size": 8,
-        "learning_rate": 1e-4,
-        "precision": "fp32",
-    })
+    cfg = advisor.suggest_config(
+        {
+            "batch_size": 8,
+            "learning_rate": 1e-4,
+            "precision": "fp32",
+        }
+    )
 
     optimizer = torch.optim.AdamW(policy.parameters(), lr=cfg.learning_rate)
 
@@ -106,11 +112,12 @@ def main() -> None:
                 optimizer.zero_grad()
                 loss = dpo_loss(policy, reference, batch["chosen"], batch["rejected"])
                 loss.backward()
-                grad_norm = sum(
-                    p.grad.norm().item() ** 2
-                    for p in policy.parameters()
-                    if p.grad is not None
-                ) ** 0.5
+                grad_norm = (
+                    sum(
+                        p.grad.norm().item() ** 2 for p in policy.parameters() if p.grad is not None
+                    )
+                    ** 0.5
+                )
                 optimizer.step()
 
                 global_step = epoch * len(loader) + step

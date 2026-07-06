@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+from sysplug.memory_model import PrecisionMode
 from sysplug.throughput_model import (
-    _GPUSpec,
-    _get_gpu_spec,
-    _infer_hidden_layers,
-    _peak_tflops,
     ThroughputModel,
     _flops_per_step,
+    _get_gpu_spec,
+    _GPUSpec,
+    _infer_hidden_layers,
+    _peak_tflops,
 )
-from sysplug.memory_model import PrecisionMode
 
 
 class TestFlopsPerStep:
@@ -128,12 +128,15 @@ class TestCalibration:
 
 
 class TestGPULookup:
-    @pytest.mark.parametrize("gpu_name,prec", [
-        ("A100", "bf16"),
-        ("V100", "fp16"),
-        ("T4", "fp16"),
-        ("RTX 4090", "bf16"),
-    ])
+    @pytest.mark.parametrize(
+        "gpu_name,prec",
+        [
+            ("A100", "bf16"),
+            ("V100", "fp16"),
+            ("T4", "fp16"),
+            ("RTX 4090", "bf16"),
+        ],
+    )
     def test_known_gpu_positive_throughput(self, gpu_name: str, prec: str) -> None:
         model = ThroughputModel(gpu_name=gpu_name)
         est = model.predict(16, 125_000_000, prec)
@@ -163,8 +166,9 @@ class TestBatchDependence:
 
     def test_throughput_monotonic_nondecreasing_in_batch(self) -> None:
         model = ThroughputModel(gpu_name="A100")
-        sps = [model.predict(b, 125_000_000, "bf16").samples_per_sec
-               for b in (1, 2, 4, 8, 16, 32, 64)]
+        sps = [
+            model.predict(b, 125_000_000, "bf16").samples_per_sec for b in (1, 2, 4, 8, 16, 32, 64)
+        ]
         for lo, hi in zip(sps, sps[1:]):
             assert hi >= lo - 1e-6
 
@@ -218,11 +222,14 @@ class TestGPUSpecTable:
 class TestArchInference:
     """`_infer_hidden_layers` must produce realistic transformer dimensions."""
 
-    @pytest.mark.parametrize("params,h_lo,h_hi,l_lo,l_hi", [
-        (125_000_000, 640, 1280, 6, 14),      # gpt2-small ~ 768/12
-        (7_000_000_000, 3200, 4800, 24, 48),  # llama-7b ~ 4096/32
-        (70_000_000_000, 7000, 10000, 60, 96),  # llama-70b ~ 8192/80
-    ])
+    @pytest.mark.parametrize(
+        "params,h_lo,h_hi,l_lo,l_hi",
+        [
+            (125_000_000, 640, 1280, 6, 14),  # gpt2-small ~ 768/12
+            (7_000_000_000, 3200, 4800, 24, 48),  # llama-7b ~ 4096/32
+            (70_000_000_000, 7000, 10000, 60, 96),  # llama-70b ~ 8192/80
+        ],
+    )
     def test_inference_in_realistic_range(
         self, params: int, h_lo: int, h_hi: int, l_lo: int, l_hi: int
     ) -> None:
@@ -233,8 +240,8 @@ class TestArchInference:
     def test_recovers_param_count_within_2x(self) -> None:
         """params ≈ 12·L·H² should round-trip within a factor of 2."""
         for params in (125_000_000, 1_300_000_000, 7_000_000_000):
-            h, l = _infer_hidden_layers(params)
-            recovered = 12 * l * h * h
+            hidden, layers = _infer_hidden_layers(params)
+            recovered = 12 * layers * hidden * hidden
             assert 0.5 < recovered / params < 2.0
 
 
@@ -259,7 +266,9 @@ class TestEmpiricalStepTimeModel:
     def test_fit_empirical_rejects_nonpositive(self) -> None:
         model = ThroughputModel()
         with pytest.raises(ValueError):
-            model.fit_empirical([
-                {"effective_batch_size": 8, "measured_samples_per_sec": 0.0},
-                {"effective_batch_size": 16, "measured_samples_per_sec": 40.0},
-            ])
+            model.fit_empirical(
+                [
+                    {"effective_batch_size": 8, "measured_samples_per_sec": 0.0},
+                    {"effective_batch_size": 16, "measured_samples_per_sec": 40.0},
+                ]
+            )

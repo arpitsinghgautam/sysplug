@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from sysplug import Advisor, SysPlugConfig
+from sysplug import Advisor
 from sysplug.hardware import HardwareSnapshot
 
 
 class TestDeepSpeedIntegration:
-    def test_patch_deepspeed_config_basic(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_patch_deepspeed_config_basic(self, mock_gpu: HardwareSnapshot) -> None:
         from sysplug.integrations.deepspeed import patch_deepspeed_config
 
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
@@ -20,8 +18,9 @@ class TestDeepSpeedIntegration:
         ds_config: dict = {}
         patched = patch_deepspeed_config(ds_config, advisor)
 
-        assert patched["train_micro_batch_size_per_gpu"] == advisor.current_config.batch_size
-        assert patched["gradient_accumulation_steps"] == advisor.current_config.gradient_accumulation
+        cfg = advisor.current_config
+        assert patched["train_micro_batch_size_per_gpu"] == cfg.batch_size
+        assert patched["gradient_accumulation_steps"] == cfg.gradient_accumulation
 
     def test_patch_sets_bf16(self, mock_gpu: HardwareSnapshot) -> None:
         from sysplug.integrations.deepspeed import patch_deepspeed_config
@@ -59,11 +58,10 @@ class TestDeepSpeedIntegration:
         patched = patch_deepspeed_config({}, advisor)
         assert patched.get("zero_optimization", {}).get("stage") == 2
 
-    def test_patch_warns_on_conflict(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
-        from sysplug.integrations.deepspeed import patch_deepspeed_config
+    def test_patch_warns_on_conflict(self, mock_gpu: HardwareSnapshot) -> None:
         import warnings
+
+        from sysplug.integrations.deepspeed import patch_deepspeed_config
 
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
         advisor.suggest_config({"batch_size": 4})
@@ -74,22 +72,18 @@ class TestDeepSpeedIntegration:
         conflicting_ds = {"train_micro_batch_size_per_gpu": 8}  # conflicts
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            patched = patch_deepspeed_config(conflicting_ds, advisor)
+            patch_deepspeed_config(conflicting_ds, advisor)
         # Should have warned about the conflict
         assert any("Overriding" in str(warning.message) for warning in w)
 
-    def test_patch_raises_without_config(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_patch_raises_without_config(self, mock_gpu: HardwareSnapshot) -> None:
         from sysplug.integrations.deepspeed import patch_deepspeed_config
 
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
         with pytest.raises(RuntimeError, match="suggest_config"):
             patch_deepspeed_config({}, advisor)
 
-    def test_to_deepspeed_config_from_sysplugconfig(
-        self, mock_gpu: HardwareSnapshot
-    ) -> None:
+    def test_to_deepspeed_config_from_sysplugconfig(self, mock_gpu: HardwareSnapshot) -> None:
         advisor = Advisor(model="gpt2", hardware=mock_gpu, verbose=False)
         cfg = advisor.suggest_config({"batch_size": 4, "precision": "bf16"})
         ds = cfg.to_deepspeed_config()

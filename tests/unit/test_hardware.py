@@ -8,18 +8,21 @@ from sysplug.hardware import (
     GPUSnapshot,
     HardwareProfiler,
     HardwareSnapshot,
-    _estimate_bandwidth,
     _cpu_only_snapshot,
+    _estimate_bandwidth,
 )
 
 
 class TestBandwidthEstimation:
-    @pytest.mark.parametrize("name,expected_min", [
-        ("NVIDIA A100-SXM4-40GB", 1000.0),
-        ("Tesla V100-SXM2-32GB", 500.0),
-        ("Tesla T4", 200.0),
-        ("NVIDIA RTX 4090", 500.0),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected_min",
+        [
+            ("NVIDIA A100-SXM4-40GB", 1000.0),
+            ("Tesla V100-SXM2-32GB", 500.0),
+            ("Tesla T4", 200.0),
+            ("NVIDIA RTX 4090", 500.0),
+        ],
+    )
     def test_known_gpu_bandwidth(self, name: str, expected_min: float) -> None:
         bw = _estimate_bandwidth(name)
         assert bw >= expected_min
@@ -96,6 +99,7 @@ class TestHardwareProfilerCPUFallback:
     def test_no_nvml_returns_cpu_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When pynvml is unavailable, profiler returns CPU-only snapshot."""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name: str, *args: object, **kwargs: object) -> object:

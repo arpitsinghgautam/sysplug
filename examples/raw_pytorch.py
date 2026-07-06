@@ -48,13 +48,15 @@ def main() -> None:
         verbose=True,
     )
 
-    cfg = advisor.suggest_config({
-        "batch_size": 8,
-        "learning_rate": 1e-3,
-        "precision": "fp32",
-        "optimizer": "adamw",
-        "gradient_accumulation": 1,
-    })
+    cfg = advisor.suggest_config(
+        {
+            "batch_size": 8,
+            "learning_rate": 1e-3,
+            "precision": "fp32",
+            "optimizer": "adamw",
+            "gradient_accumulation": 1,
+        }
+    )
 
     print(f"\nRecommended config: {cfg}")
 
@@ -91,10 +93,9 @@ def main() -> None:
                     step=global_step,
                     loss=loss.item(),
                     grad_norm=sum(
-                        p.grad.norm().item() ** 2
-                        for p in model.parameters()
-                        if p.grad is not None
-                    ) ** 0.5,
+                        p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None
+                    )
+                    ** 0.5,
                 )
 
     print("\n[DONE] Training completed. SysPlug monitoring finished.")

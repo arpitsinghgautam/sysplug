@@ -12,7 +12,7 @@ Provides a context manager and a forward hook for manual training loops:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sysplug.advisor import Advisor
@@ -42,16 +42,16 @@ class SysPlugContext:
 
     def __init__(
         self,
-        advisor: "Advisor",
+        advisor: Advisor,
         check_interval_steps: int = 50,
         reconfig_policy: str = "suggest",
     ) -> None:
         self._advisor = advisor
         self._check_interval = check_interval_steps
         self._reconfig_policy = reconfig_policy
-        self._monitor: Optional["Monitor"] = None
+        self._monitor: Monitor | None = None
 
-    def __enter__(self) -> "SysPlugContext":
+    def __enter__(self) -> SysPlugContext:
         self._monitor = self._advisor.monitor(
             check_interval_steps=self._check_interval,
             reconfig_policy=self._reconfig_policy,
@@ -66,8 +66,8 @@ class SysPlugContext:
         self,
         step: int,
         loss: float,
-        grad_norm: Optional[float] = None,
-        custom_metrics: Optional[Any] = None,
+        grad_norm: float | None = None,
+        custom_metrics: Any | None = None,
     ) -> None:
         """Record a training step (thread-safe, non-blocking).
 
@@ -119,11 +119,10 @@ class SysPlugForwardHook:
         """Called after each forward pass of the monitored module."""
         try:
             import torch  # type: ignore[import]
+
             if torch.cuda.is_available():
                 after_bytes = torch.cuda.memory_allocated(self._device)
-                self.last_activation_mb = (
-                    after_bytes - self._before_bytes
-                ) / 1024 / 1024
+                self.last_activation_mb = (after_bytes - self._before_bytes) / 1024 / 1024
         except Exception:
             self.last_activation_mb = 0.0
 
@@ -131,6 +130,7 @@ class SysPlugForwardHook:
         """Pre-forward hook to record baseline memory."""
         try:
             import torch  # type: ignore[import]
+
             if torch.cuda.is_available():
                 self._before_bytes = torch.cuda.memory_allocated(self._device)
         except Exception:

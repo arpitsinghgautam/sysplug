@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 from rich.console import Console
 
-_console: Optional[Console] = None
-_logger: Optional[logging.Logger] = None
+_console: Console | None = None
+_logger: logging.Logger | None = None
 
 
 def get_console(verbose: bool = True) -> Console:
@@ -36,6 +35,7 @@ def get_console(verbose: bool = True) -> Console:
     if _console is None:
         import io
         import sys as _sys
+
         # Wrap stdout with UTF-8 encoding to avoid Windows cp1252 issues
         if hasattr(_sys.stdout, "buffer"):
             safe_file = io.TextIOWrapper(

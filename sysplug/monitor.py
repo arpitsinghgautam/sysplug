@@ -9,18 +9,20 @@ wrapping the training loop:
             loss = train_step(batch)
             mon.record(step=step, loss=loss.item())
 
-All shared state is protected by a :class:`threading.Lock` so ``record()``
-never blocks the training loop.
+``record()`` hands metrics to the background thread via a non-blocking
+:class:`queue.Queue` (``put_nowait``), so it never blocks the training loop;
+event state read back by the caller is guarded by a :class:`threading.Lock`.
 """
 
 from __future__ import annotations
 
+import contextlib
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sysplug.advisor import Advisor
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 
 class EventType(str, Enum):
     """Type of monitor event."""
+
     OOM_RISK = "oom_risk"
     DIVERGING_LOSS = "diverging_loss"
     OSCILLATING_LOSS = "oscillating_loss"
@@ -49,20 +52,22 @@ class MonitorEvent:
         details: Optional dict with additional structured data.
         timestamp: Unix timestamp of the event.
     """
+
     event_type: EventType
     step: int
     message: str
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
 class _StepRecord:
     """Internal record passed through the step queue."""
+
     step: int
     loss: float
-    grad_norm: Optional[float] = None
-    custom_metrics: Optional[Dict[str, Any]] = None
+    grad_norm: float | None = None
+    custom_metrics: dict[str, Any] | None = None
 
 
 class Monitor:
@@ -86,7 +91,7 @@ class Monitor:
 
     def __init__(
         self,
-        advisor: "Advisor",
+        advisor: Advisor,
         check_interval_steps: int = 50,
         reconfig_policy: str = "suggest",
         verbose: bool = True,
@@ -97,11 +102,11 @@ class Monitor:
         self._verbose = verbose
 
         self._step_queue: queue.Queue[_StepRecord] = queue.Queue()
-        self._events: List[MonitorEvent] = []
+        self._events: list[MonitorEvent] = []
         self._events_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self._step_buffer: List[_StepRecord] = []
+        self._thread: threading.Thread | None = None
+        self._step_buffer: list[_StepRecord] = []
         self._last_check_step = -1
         self._last_checked_at_step = -1
 
@@ -109,7 +114,7 @@ class Monitor:
     # Context manager
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "Monitor":
+    def __enter__(self) -> Monitor:
         """Start the background monitoring thread."""
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -139,8 +144,8 @@ class Monitor:
         self,
         step: int,
         loss: float,
-        grad_norm: Optional[float] = None,
-        custom_metrics: Optional[Dict[str, Any]] = None,
+        grad_norm: float | None = None,
+        custom_metrics: dict[str, Any] | None = None,
     ) -> None:
         """Record a training step metric (non-blocking, thread-safe).
 
@@ -153,7 +158,8 @@ class Monitor:
             grad_norm: Optional gradient L2-norm.
             custom_metrics: Optional dict of additional metrics.
         """
-        try:
+        # Never block training; silently drop if the queue is ever full.
+        with contextlib.suppress(queue.Full):
             self._step_queue.put_nowait(
                 _StepRecord(
                     step=step,
@@ -162,8 +168,6 @@ class Monitor:
                     custom_metrics=custom_metrics,
                 )
             )
-        except queue.Full:
-            pass  # Never block training; silently drop if queue full
 
     # ------------------------------------------------------------------
     # Background thread
@@ -181,7 +185,7 @@ class Monitor:
 
         while not self._stop_event.is_set():
             # Drain the step queue
-            drained: List[_StepRecord] = []
+            drained: list[_StepRecord] = []
             try:
                 while True:
                     drained.append(self._step_queue.get_nowait())
@@ -222,7 +226,7 @@ class Monitor:
             if used_frac > 0.90:
                 msg = (
                     f"[bold red]OOM RISK[/bold red]: GPU {gpu.device_id} memory at "
-                    f"{used_frac*100:.1f}% "
+                    f"{used_frac * 100:.1f}% "
                     f"({gpu.used_memory_mb:.0f}/{gpu.total_memory_mb:.0f} MiB)"
                 )
                 self._emit_event(EventType.OOM_RISK, step, msg)
@@ -299,7 +303,7 @@ class Monitor:
         event_type: EventType,
         step: int,
         message: str,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Thread-safely append an event to the event list."""
         event = MonitorEvent(
@@ -315,7 +319,7 @@ class Monitor:
     # Query API
     # ------------------------------------------------------------------
 
-    def get_events(self) -> List[MonitorEvent]:
+    def get_events(self) -> list[MonitorEvent]:
         """Return a snapshot of all events recorded so far.
 
         Returns:

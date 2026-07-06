@@ -6,12 +6,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from sysplug.memory_model import MemoryModel, PrecisionMode, _params_from_name
-
+from sysplug.memory_model import MemoryModel, _params_from_name
 
 # ---------------------------------------------------------------------------
 # Basic bytes-per-param tests
 # ---------------------------------------------------------------------------
+
 
 class TestParameterBytes:
     def test_fp32_7b_parameters(self) -> None:
@@ -70,6 +70,7 @@ class TestParameterBytes:
 # Optimizer states
 # ---------------------------------------------------------------------------
 
+
 class TestOptimizerStates:
     def test_adamw_two_fp32_moments(self) -> None:
         """AdamW requires 2× FP32 param size for m and v, plus master weights."""
@@ -116,6 +117,7 @@ class TestOptimizerStates:
 # ZeRO sharding
 # ---------------------------------------------------------------------------
 
+
 class TestZeROSharding:
     def test_zero3_shards_everything(self) -> None:
         """ZeRO-3 divides params + grads + optimizer states by gpu_count."""
@@ -123,12 +125,8 @@ class TestZeROSharding:
         model_no_shard = MemoryModel(gpu_count=1)
         model_zero3 = MemoryModel(gpu_count=gpu_count)
 
-        no_shard = model_no_shard.predict(
-            1_000_000_000, 1, "bf16", "adamw", "none"
-        )
-        with_zero3 = model_zero3.predict(
-            1_000_000_000, 1, "bf16", "adamw", "zero3"
-        )
+        no_shard = model_no_shard.predict(1_000_000_000, 1, "bf16", "adamw", "none")
+        with_zero3 = model_zero3.predict(1_000_000_000, 1, "bf16", "adamw", "zero3")
 
         # Parameters and gradients should be sharded
         assert with_zero3.breakdown.parameters_mb < no_shard.breakdown.parameters_mb
@@ -165,34 +163,56 @@ class TestZeROSharding:
 # Gradient checkpointing
 # ---------------------------------------------------------------------------
 
+
 class TestGradientCheckpointing:
     def test_checkpointing_reduces_activations(self) -> None:
         """Gradient checkpointing reduces activation memory below full."""
         model = MemoryModel()
         full = model.predict(
-            1_000_000_000, 4, "bf16", "adamw", "none",
-            use_gradient_checkpointing=False, num_layers=24
+            1_000_000_000,
+            4,
+            "bf16",
+            "adamw",
+            "none",
+            use_gradient_checkpointing=False,
+            num_layers=24,
         )
         ckpt = model.predict(
-            1_000_000_000, 4, "bf16", "adamw", "none",
-            use_gradient_checkpointing=True, num_layers=24
+            1_000_000_000,
+            4,
+            "bf16",
+            "adamw",
+            "none",
+            use_gradient_checkpointing=True,
+            num_layers=24,
         )
         assert ckpt.breakdown.activations_mb < full.breakdown.activations_mb
 
     def test_checkpointing_sqrt_factor(self) -> None:
         """Activation reduction is approximately sqrt(num_layers) / num_layers."""
         import math
+
         model = MemoryModel()
         num_layers = 24
         full = model.predict(
-            1_000_000_000, 4, "bf16", "sgd", "none",
+            1_000_000_000,
+            4,
+            "bf16",
+            "sgd",
+            "none",
             use_gradient_checkpointing=False,
-            num_layers=num_layers, hidden_dim=1024
+            num_layers=num_layers,
+            hidden_dim=1024,
         )
         ckpt = model.predict(
-            1_000_000_000, 4, "bf16", "sgd", "none",
+            1_000_000_000,
+            4,
+            "bf16",
+            "sgd",
+            "none",
             use_gradient_checkpointing=True,
-            num_layers=num_layers, hidden_dim=1024
+            num_layers=num_layers,
+            hidden_dim=1024,
         )
         expected_factor = math.sqrt(num_layers) / num_layers
         actual_factor = ckpt.breakdown.activations_mb / full.breakdown.activations_mb
@@ -203,6 +223,7 @@ class TestGradientCheckpointing:
 # Calibration
 # ---------------------------------------------------------------------------
 
+
 class TestCalibration:
     def test_calibration_fits_factor(self) -> None:
         """Calibration adjusts predictions toward measured values."""
@@ -211,11 +232,15 @@ class TestCalibration:
         # Pretend actual measurement is 80% of prediction
         measured_mb = pred.peak_memory_mb * 0.8
 
-        factor = model.calibrate([{
-            "param_count": 125_000_000,
-            "batch_size": 4,
-            "measured_mb": measured_mb,
-        }])
+        factor = model.calibrate(
+            [
+                {
+                    "param_count": 125_000_000,
+                    "batch_size": 4,
+                    "measured_mb": measured_mb,
+                }
+            ]
+        )
 
         assert factor == pytest.approx(0.8, rel=0.05)
         # After calibration, prediction should be closer to measured
@@ -233,11 +258,13 @@ class TestCalibration:
         samples = []
         for bs in [2, 4, 8]:
             pred = model.predict(125_000_000, bs)
-            samples.append({
-                "param_count": 125_000_000,
-                "batch_size": bs,
-                "measured_mb": pred.peak_memory_mb * 0.9,
-            })
+            samples.append(
+                {
+                    "param_count": 125_000_000,
+                    "batch_size": bs,
+                    "measured_mb": pred.peak_memory_mb * 0.9,
+                }
+            )
         factor = model.calibrate(samples)
         assert 0.5 < factor < 1.5
 
@@ -245,6 +272,7 @@ class TestCalibration:
 # ---------------------------------------------------------------------------
 # Model name lookup
 # ---------------------------------------------------------------------------
+
 
 class TestModelNameLookup:
     def test_known_model_name(self) -> None:
@@ -267,15 +295,14 @@ class TestModelNameLookup:
 # Property-based tests
 # ---------------------------------------------------------------------------
 
+
 class TestProperties:
     @given(
         batch_size=st.integers(min_value=1, max_value=32),
         precision=st.sampled_from(["fp32", "fp16", "bf16"]),
     )
     @settings(max_examples=50)
-    def test_memory_positive_and_monotone(
-        self, batch_size: int, precision: str
-    ) -> None:
+    def test_memory_positive_and_monotone(self, batch_size: int, precision: str) -> None:
         """Predicted memory is always positive and increases with batch_size."""
         model = MemoryModel()
         est_small = model.predict(125_000_000, max(1, batch_size - 1), precision, "adamw")
@@ -299,6 +326,7 @@ class TestProperties:
 # ---------------------------------------------------------------------------
 # Confidence interval
 # ---------------------------------------------------------------------------
+
 
 class TestConfidenceInterval:
     def test_lower_less_than_upper(self) -> None:

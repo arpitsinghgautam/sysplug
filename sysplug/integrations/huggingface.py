@@ -8,7 +8,7 @@ Requires ``pip install sysplug[hf]``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sysplug.advisor import Advisor
@@ -19,12 +19,13 @@ def _require_transformers() -> Any:
     """Lazily import transformers with a helpful error message."""
     try:
         import transformers  # type: ignore[import]
+
         return transformers
     except ImportError:
         raise ImportError(
             "transformers is required for SysPlugTrainerCallback. "
             "Install it with: pip install sysplug[hf]"
-        )
+        ) from None
 
 
 class SysPlugTrainerCallback:
@@ -46,7 +47,7 @@ class SysPlugTrainerCallback:
         >>> # trainer = Trainer(..., callbacks=[callback])
     """
 
-    def __init__(self, advisor: "Advisor") -> None:
+    def __init__(self, advisor: Advisor) -> None:
         transformers = _require_transformers()
         # Inherit from TrainerCallback at runtime to avoid top-level import
         self.__class__ = type(
@@ -55,7 +56,7 @@ class SysPlugTrainerCallback:
             dict(SysPlugTrainerCallback.__dict__),
         )
         self._advisor = advisor
-        self._stability_signal: Optional[Any] = None
+        self._stability_signal: Any | None = None
 
     def on_train_begin(
         self,
@@ -79,8 +80,10 @@ class SysPlugTrainerCallback:
             "gradient_accumulation": getattr(args, "gradient_accumulation_steps", 1),
             "learning_rate": getattr(args, "learning_rate", 1e-4),
             "precision": (
-                "bf16" if getattr(args, "bf16", False)
-                else "fp16" if getattr(args, "fp16", False)
+                "bf16"
+                if getattr(args, "bf16", False)
+                else "fp16"
+                if getattr(args, "fp16", False)
                 else "fp32"
             ),
             "use_gradient_checkpointing": getattr(args, "gradient_checkpointing", False),
@@ -88,14 +91,15 @@ class SysPlugTrainerCallback:
 
         try:
             cfg = self._advisor.suggest_config(config_dict)
-            self._last_config: "SysPlugConfig" = cfg
+            self._last_config: SysPlugConfig = cfg
         except Exception as e:
             import warnings
-            warnings.warn(f"SysPlug suggest_config failed: {e}")
+
+            warnings.warn(f"SysPlug suggest_config failed: {e}", stacklevel=2)
 
         self._stability_signal = StabilitySignal(window_size=50)
 
-    def _record_from_logs(self, step: int, logs: Optional[Dict[str, Any]]) -> None:
+    def _record_from_logs(self, step: int, logs: dict[str, Any] | None) -> None:
         """Feed loss / gradient norm from a HF logs dict into the signal."""
         if self._stability_signal is None or not logs:
             return
@@ -111,7 +115,7 @@ class SysPlugTrainerCallback:
         args: Any,
         state: Any,
         control: Any,
-        logs: Optional[Dict[str, Any]] = None,
+        logs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Record metrics from the trainer's log event.
@@ -174,9 +178,11 @@ class SysPlugTrainerCallback:
         report = self._stability_signal.check()
         if report.recommended_action != "ok":
             import warnings
+
             warnings.warn(
                 f"[SysPlug] Epoch {state.epoch:.0f} stability check: "
-                f"{report.message} (action={report.recommended_action})"
+                f"{report.message} (action={report.recommended_action})",
+                stacklevel=2,
             )
 
     @classmethod
@@ -184,8 +190,8 @@ class SysPlugTrainerCallback:
         cls,
         training_args: Any,
         model: Any,
-        advisor: Optional["Advisor"] = None,
-    ) -> "SysPlugTrainerCallback":
+        advisor: Advisor | None = None,
+    ) -> SysPlugTrainerCallback:
         """Create a callback from an existing ``TrainingArguments`` and model.
 
         Args:
@@ -199,5 +205,6 @@ class SysPlugTrainerCallback:
         """
         if advisor is None:
             import sysplug
+
             advisor = sysplug.Advisor(model=model)
         return cls(advisor)

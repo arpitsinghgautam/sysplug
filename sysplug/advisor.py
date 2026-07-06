@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from sysplug.config import SysPlugConfig
 from sysplug.hardware import HardwareProfiler, HardwareSnapshot
@@ -51,10 +51,10 @@ class WhatIfResult:
     """
 
     new_config: SysPlugConfig
-    changed_params: Dict[str, tuple[Any, Any]] = field(default_factory=dict)
-    reason: Dict[str, str] = field(default_factory=dict)
+    changed_params: dict[str, tuple[Any, Any]] = field(default_factory=dict)
+    reason: dict[str, str] = field(default_factory=dict)
     feasible: bool = True
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -88,13 +88,13 @@ class Advisor:
 
     def __init__(
         self,
-        model: Union[Any, str, int] = "gpt2",
-        hardware: Union[str, HardwareSnapshot] = "auto",
+        model: Any | str | int = "gpt2",
+        hardware: str | HardwareSnapshot = "auto",
         training_type: str = "supervised",
         objective: str = "balanced",
         verbose: bool = True,
-        device_ids: Optional[list[int]] = None,
-        constraints: Optional[SolverConstraints] = None,
+        device_ids: list[int] | None = None,
+        constraints: SolverConstraints | None = None,
     ) -> None:
         self._verbose = verbose
         self._training_type = training_type
@@ -137,13 +137,13 @@ class Advisor:
             verbose=verbose,
         )
 
-        self._current_config: Optional[SysPlugConfig] = None
+        self._current_config: SysPlugConfig | None = None
 
     # ------------------------------------------------------------------
     # Main API
     # ------------------------------------------------------------------
 
-    def suggest_config(self, base_config: Dict[str, Any]) -> SysPlugConfig:
+    def suggest_config(self, base_config: dict[str, Any]) -> SysPlugConfig:
         """Return the best safe configuration for the given starting point.
 
         Runs the full pipeline:
@@ -193,8 +193,8 @@ class Advisor:
 
     def what_if(
         self,
-        change: Dict[str, Any],
-        current_config: Optional[SysPlugConfig] = None,
+        change: dict[str, Any],
+        current_config: SysPlugConfig | None = None,
     ) -> WhatIfResult:
         """Evaluate a proposed hyperparameter change.
 
@@ -222,17 +222,20 @@ class Advisor:
         """
         base = current_config or self._current_config
         if base is None:
-            raise RuntimeError(
-                "No current config available. Call suggest_config() first."
-            )
+            raise RuntimeError("No current config available. Call suggest_config() first.")
 
         # Build merged config from current + proposed change
         merged = base.to_dict()
         # Keep only solver-relevant keys
         solver_keys = {
-            "batch_size", "gradient_accumulation", "learning_rate",
-            "precision", "optimizer", "parallelism",
-            "use_gradient_checkpointing", "sequence_length",
+            "batch_size",
+            "gradient_accumulation",
+            "learning_rate",
+            "precision",
+            "optimizer",
+            "parallelism",
+            "use_gradient_checkpointing",
+            "sequence_length",
         }
         solver_config = {k: merged[k] for k in solver_keys if k in merged}
         solver_config.update(change)
@@ -254,8 +257,8 @@ class Advisor:
         )
 
         # Compute diff
-        changed_params: Dict[str, tuple[Any, Any]] = {}
-        reason: Dict[str, str] = {}
+        changed_params: dict[str, tuple[Any, Any]] = {}
+        reason: dict[str, str] = {}
 
         for key in solver_keys:
             old_val = getattr(base, key, None)
@@ -315,7 +318,7 @@ class Advisor:
         self,
         dataloader: Any,
         steps: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run a short profiling pass to calibrate models.
 
         Attempts to measure actual memory usage and throughput over a few
@@ -338,16 +341,16 @@ class Advisor:
         try:
             import torch
         except ImportError:
-            warnings.warn("torch not available; returning estimated values.")
+            warnings.warn("torch not available; returning estimated values.", stacklevel=2)
             return {"measured_memory_mb": 0.0, "measured_samples_per_sec": 0.0}
 
         if self._current_config is None:
-            warnings.warn("Call suggest_config() before profile_run().")
+            warnings.warn("Call suggest_config() before profile_run().", stacklevel=2)
             return {}
 
         measured_samples = []
         start = time.perf_counter()
-        for i, batch in enumerate(dataloader):
+        for i, _batch in enumerate(dataloader):
             if i >= steps:
                 break
             if torch.cuda.is_available():
@@ -356,7 +359,7 @@ class Advisor:
         elapsed = time.perf_counter() - start
         total_samples = steps * self._current_config.batch_size
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "measured_memory_mb": 0.0,
             "measured_samples_per_sec": total_samples / max(elapsed, 1e-6),
         }
@@ -366,15 +369,17 @@ class Advisor:
             result["measured_memory_mb"] = peak_bytes / 1024 / 1024
 
             # Calibrate memory model
-            measured_samples.append({
-                "param_count": self._param_count,
-                "batch_size": self._current_config.batch_size,
-                "precision": self._current_config.precision,
-                "optimizer": self._current_config.optimizer,
-                "parallelism": self._current_config.parallelism,
-                "use_gradient_checkpointing": self._current_config.use_gradient_checkpointing,
-                "measured_mb": result["measured_memory_mb"],
-            })
+            measured_samples.append(
+                {
+                    "param_count": self._param_count,
+                    "batch_size": self._current_config.batch_size,
+                    "precision": self._current_config.precision,
+                    "optimizer": self._current_config.optimizer,
+                    "parallelism": self._current_config.parallelism,
+                    "use_gradient_checkpointing": self._current_config.use_gradient_checkpointing,
+                    "measured_mb": result["measured_memory_mb"],
+                }
+            )
             factor = self._memory_model.calibrate(measured_samples)
             result["calibration_factor_memory"] = factor
 
@@ -385,7 +390,7 @@ class Advisor:
     # ------------------------------------------------------------------
 
     @property
-    def current_config(self) -> Optional[SysPlugConfig]:
+    def current_config(self) -> SysPlugConfig | None:
         """The most recently recommended configuration, or ``None``."""
         return self._current_config
 
@@ -410,7 +415,7 @@ class Advisor:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_param_count(model: Union[Any, str, int]) -> int:
+    def _resolve_param_count(model: Any | str | int) -> int:
         """Resolve parameter count from a module, string, or integer."""
         if isinstance(model, int):
             return model
@@ -422,6 +427,7 @@ class Advisor:
         except AttributeError:
             warnings.warn(
                 f"Could not determine parameter count from model type {type(model)}. "
-                "Defaulting to 125M parameters."
+                "Defaulting to 125M parameters.",
+                stacklevel=2,
             )
             return 125_000_000
