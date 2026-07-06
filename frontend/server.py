@@ -9,15 +9,15 @@ Then open  http://localhost:8000
 
 from __future__ import annotations
 
+import os
 import warnings
 from pathlib import Path
-from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -33,28 +33,31 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 # Request / Response models
 # ---------------------------------------------------------------------------
 
+
+# Bounds keep requests sane and prevent out-of-range/overflow inputs from
+# reaching the analytic models (returned as HTTP 422 rather than 500).
 class PredictRequest(BaseModel):
-    model_name: str = "gpt2"
-    param_count: int = 0          # if > 0, overrides model_name lookup
-    batch_size: int = 8
-    gradient_accumulation: int = 1
-    sequence_length: int = 512
-    precision: str = "bf16"
-    optimizer: str = "adamw"
-    parallelism: str = "none"
+    model_name: str = Field("gpt2", max_length=128)
+    param_count: int = Field(0, ge=0, le=2_000_000_000_000)  # 0 = use model_name
+    batch_size: int = Field(8, ge=1, le=1_000_000)
+    gradient_accumulation: int = Field(1, ge=1, le=4096)
+    sequence_length: int = Field(512, ge=1, le=1_048_576)
+    precision: str = Field("bf16", max_length=8)
+    optimizer: str = Field("adamw", max_length=32)
+    parallelism: str = Field("none", max_length=16)
     use_gradient_checkpointing: bool = False
-    gpu_count: int = 1
-    gpu_memory_mb: float = 40_960.0   # total VRAM of one GPU (MiB)
+    gpu_count: int = Field(1, ge=1, le=1024)
+    gpu_memory_mb: float = Field(40_960.0, gt=0, le=2_000_000)
 
 
 class InferenceRequest(BaseModel):
-    model_name: str = "llama-3-8b"
-    param_count: int = 0
-    batch_size: int = 1           # concurrent requests
-    sequence_length: int = 2048   # max context length
-    precision: str = "bf16"
-    gpu_count: int = 1
-    gpu_memory_mb: float = 40_960.0
+    model_name: str = Field("llama-3-8b", max_length=128)
+    param_count: int = Field(0, ge=0, le=2_000_000_000_000)
+    batch_size: int = Field(1, ge=1, le=1_000_000)
+    sequence_length: int = Field(2048, ge=1, le=1_048_576)
+    precision: str = Field("bf16", max_length=8)
+    gpu_count: int = Field(1, ge=1, le=1024)
+    gpu_memory_mb: float = Field(40_960.0, gt=0, le=2_000_000)
     kv_cache: bool = True
 
 
@@ -62,16 +65,18 @@ class InferenceRequest(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
+
 @app.get("/")
-def root():
+def root() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
 @app.get("/hardware")
-def get_hardware():
+def get_hardware() -> dict:
     """Return live GPU snapshot, or CPU-only stub."""
     try:
         from sysplug.hardware import HardwareProfiler
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             profiler = HardwareProfiler(verbose=False)
@@ -101,7 +106,7 @@ def get_hardware():
 
 
 @app.post("/predict")
-def predict(req: PredictRequest):
+def predict(req: PredictRequest) -> dict:
     """Run analytic memory + throughput prediction and return full breakdown."""
     from sysplug.memory_model import MemoryModel, _params_from_name
     from sysplug.throughput_model import ThroughputModel
@@ -146,14 +151,16 @@ def predict(req: PredictRequest):
     budget_mb = req.gpu_memory_mb * 0.85
     mem_pct = (mem_est.peak_memory_mb / req.gpu_memory_mb) * 100
     fits = mem_est.peak_memory_mb <= budget_mb
-    oom_pct = (mem_est.peak_memory_mb / budget_mb) * 100   # % of *budget*
+    oom_pct = (mem_est.peak_memory_mb / budget_mb) * 100  # % of *budget*
 
     # ── Warnings ─────────────────────────────────────────────────────────
     warns: list[str] = []
     if not fits:
         over = mem_est.peak_memory_mb - budget_mb
-        warns.append(f"OOM risk: predicted {mem_est.peak_memory_mb:.0f} MiB "
-                     f"exceeds {budget_mb:.0f} MiB budget by {over:.0f} MiB.")
+        warns.append(
+            f"OOM risk: predicted {mem_est.peak_memory_mb:.0f} MiB "
+            f"exceeds {budget_mb:.0f} MiB budget by {over:.0f} MiB."
+        )
     if req.precision == "fp16" and req.batch_size <= 4:
         warns.append("Small batch with fp16 can cause numerical instability.")
     if req.gradient_accumulation > 32:
@@ -171,40 +178,42 @@ def predict(req: PredictRequest):
         "model_label": model_label,
         "params": params,
         "params_b": params / 1e9,
-
         # Memory
         "peak_memory_mb": mem_est.peak_memory_mb,
         "lower_mb": mem_est.lower_mb,
         "upper_mb": mem_est.upper_mb,
         "budget_mb": budget_mb,
-        "mem_pct": mem_pct,          # % of total VRAM
-        "oom_pct": oom_pct,          # % of budget
+        "mem_pct": mem_pct,  # % of total VRAM
+        "oom_pct": oom_pct,  # % of budget
         "fits": fits,
-
         # Breakdown (MiB + fraction of total)
         "breakdown": {
-            "parameters": {"mb": bd.parameters_mb,
-                           "pct": 100 * bd.parameters_mb / max(total_bd, 1)},
-            "gradients":  {"mb": bd.gradients_mb,
-                           "pct": 100 * bd.gradients_mb / max(total_bd, 1)},
-            "optimizer":  {"mb": bd.optimizer_states_mb,
-                           "pct": 100 * bd.optimizer_states_mb / max(total_bd, 1)},
-            "activations":{"mb": bd.activations_mb,
-                           "pct": 100 * bd.activations_mb / max(total_bd, 1)},
-            "overhead":   {"mb": bd.framework_overhead_mb,
-                           "pct": 100 * bd.framework_overhead_mb / max(total_bd, 1)},
+            "parameters": {
+                "mb": bd.parameters_mb,
+                "pct": 100 * bd.parameters_mb / max(total_bd, 1),
+            },
+            "gradients": {"mb": bd.gradients_mb, "pct": 100 * bd.gradients_mb / max(total_bd, 1)},
+            "optimizer": {
+                "mb": bd.optimizer_states_mb,
+                "pct": 100 * bd.optimizer_states_mb / max(total_bd, 1),
+            },
+            "activations": {
+                "mb": bd.activations_mb,
+                "pct": 100 * bd.activations_mb / max(total_bd, 1),
+            },
+            "overhead": {
+                "mb": bd.framework_overhead_mb,
+                "pct": 100 * bd.framework_overhead_mb / max(total_bd, 1),
+            },
         },
-
         # Throughput
         "samples_per_sec": tput.samples_per_sec,
         "tokens_per_sec": tput.tokens_per_sec,
         "is_memory_bound": tput.is_memory_bound,
         "attainable_tflops": tput.attainable_tflops,
-
         # Batch
         "effective_batch_size": eff_batch,
         "lr_rule": lr_rule,
-
         # Misc
         "warnings": warns,
         "gpu_name": gpu_name,
@@ -212,7 +221,7 @@ def predict(req: PredictRequest):
 
 
 @app.post("/predict-inference")
-def predict_inference(req: InferenceRequest):
+def predict_inference(req: InferenceRequest) -> dict:
     """Inference memory + throughput prediction."""
     from sysplug.memory_model import _params_from_name
     from sysplug.throughput_model import ThroughputModel
@@ -239,8 +248,7 @@ def predict_inference(req: InferenceRequest):
 
     # KV cache: 2 (K+V) * layers * seq * hidden * batch * bytes
     if req.kv_cache:
-        kv_cache_mb = (2 * layers * req.sequence_length * hidden
-                       * req.batch_size * bpe) / 1_048_576
+        kv_cache_mb = (2 * layers * req.sequence_length * hidden * req.batch_size * bpe) / 1_048_576
     else:
         kv_cache_mb = 0.0
 
@@ -265,8 +273,7 @@ def predict_inference(req: InferenceRequest):
         )
     if req.precision in ("fp16", "fp32") and params > 7_000_000_000:
         warns.append(
-            f"For {params/1e9:.0f}B model consider int8/int4 "
-            "quantization to reduce VRAM."
+            f"For {params / 1e9:.0f}B model consider int8/int4 quantization to reduce VRAM."
         )
     if req.kv_cache and kv_cache_mb > params_mb:
         warns.append(
@@ -288,7 +295,6 @@ def predict_inference(req: InferenceRequest):
         "model_label": model_label,
         "params": params,
         "params_b": params / 1e9,
-
         "peak_memory_mb": peak_mb,
         "lower_mb": peak_mb * 0.85,
         "upper_mb": peak_mb * 1.15,
@@ -296,19 +302,16 @@ def predict_inference(req: InferenceRequest):
         "mem_pct": mem_pct,
         "oom_pct": (peak_mb / budget_mb) * 100,
         "fits": fits,
-
         "breakdown": {
-            "parameters":  {"mb": params_mb,     "pct": 100 * params_mb / total_bd},
-            "kv_cache":    {"mb": kv_cache_mb,   "pct": 100 * kv_cache_mb / total_bd},
-            "activations": {"mb": activations_mb,"pct": 100 * activations_mb / total_bd},
-            "overhead":    {"mb": overhead_mb,   "pct": 100 * overhead_mb / total_bd},
+            "parameters": {"mb": params_mb, "pct": 100 * params_mb / total_bd},
+            "kv_cache": {"mb": kv_cache_mb, "pct": 100 * kv_cache_mb / total_bd},
+            "activations": {"mb": activations_mb, "pct": 100 * activations_mb / total_bd},
+            "overhead": {"mb": overhead_mb, "pct": 100 * overhead_mb / total_bd},
         },
-
-        "tokens_per_sec":    tput.tokens_per_sec,
-        "samples_per_sec":   tput.samples_per_sec,
-        "is_memory_bound":   tput.is_memory_bound,
+        "tokens_per_sec": tput.tokens_per_sec,
+        "samples_per_sec": tput.samples_per_sec,
+        "is_memory_bound": tput.is_memory_bound,
         "attainable_tflops": tput.attainable_tflops,
-
         "warnings": warns,
         "gpu_name": gpu_name,
     }
@@ -317,6 +320,7 @@ def predict_inference(req: InferenceRequest):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _estimate_arch(param_count: int) -> tuple[int, int]:
     """Estimate (hidden_size, num_layers) from parameter count."""
@@ -337,6 +341,7 @@ def _detect_gpu_name() -> str:
     """Return the first detected GPU name, or 'A100' as a sensible default."""
     try:
         from sysplug.hardware import HardwareProfiler
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             snap = HardwareProfiler(verbose=False).snapshot()
@@ -352,7 +357,13 @@ def _detect_gpu_name() -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # Bind to loopback by default. Set SYSPLUG_HOST=0.0.0.0 to expose the
+    # dashboard on the network (only do this on a trusted network — the app
+    # has no authentication).
+    host = os.environ.get("SYSPLUG_HOST", "127.0.0.1")
+    port = int(os.environ.get("SYSPLUG_PORT", "8000"))
+    shown = "localhost" if host == "127.0.0.1" else host
     print("\n  SysPlug Visual Dashboard")
     print("  -----------------------------------------")
-    print("  Open  http://localhost:8000  in your browser\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, log_level="warning")
+    print(f"  Open  http://{shown}:{port}  in your browser\n")
+    uvicorn.run(app, host=host, port=port, reload=False, log_level="warning")
