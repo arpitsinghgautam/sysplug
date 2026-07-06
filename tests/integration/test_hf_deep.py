@@ -258,6 +258,50 @@ class TestOnStepEnd:
         assert cb._stability_signal.num_recorded_steps == 10
 
 
+class TestOnLog:
+    """on_log is the real HF path where metrics are delivered (not on_step_end)."""
+
+    def _trained_callback(self):
+        from sysplug.integrations.huggingface import SysPlugTrainerCallback
+        adv = _make_advisor()
+        cb = SysPlugTrainerCallback(adv)
+        cb.on_train_begin(_make_args(), _make_state(), _make_control())
+        return cb
+
+    def test_on_log_records_loss_and_grad_norm(self):
+        cb = self._trained_callback()
+        cb.on_log(_make_args(), _make_state(step=5), _make_control(),
+                  logs={"loss": 0.8, "grad_norm": 1.2})
+        assert cb._stability_signal.num_recorded_steps == 1
+        assert len(cb._stability_signal._grad_norms) == 1
+
+    def test_on_log_accepts_logs_positionally(self):
+        cb = self._trained_callback()
+        cb.on_log(_make_args(), _make_state(step=1), _make_control(), {"loss": 0.5})
+        assert cb._stability_signal.num_recorded_steps == 1
+
+    def test_on_log_no_op_without_signal(self):
+        from sysplug.integrations.huggingface import SysPlugTrainerCallback
+        cb = SysPlugTrainerCallback(_make_advisor())  # no on_train_begin
+        cb.on_log(_make_args(), _make_state(step=1), _make_control(), logs={"loss": 1.0})
+
+    def test_on_log_handles_none_logs(self):
+        cb = self._trained_callback()
+        cb.on_log(_make_args(), _make_state(step=1), _make_control(), logs=None)
+        assert cb._stability_signal.num_recorded_steps == 0
+
+    def test_on_log_drives_epoch_divergence_warning(self):
+        import warnings
+        cb = self._trained_callback()
+        for step in range(10):
+            cb.on_log(_make_args(), _make_state(step=step), _make_control(),
+                      logs={"loss": 1.0 + step * 0.5})  # steeply increasing
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            cb.on_epoch_end(_make_args(), _make_state(epoch=1), _make_control())
+        assert any("stability" in str(x.message).lower() for x in w)
+
+
 # ---------------------------------------------------------------------------
 # 4. on_epoch_end
 # ---------------------------------------------------------------------------

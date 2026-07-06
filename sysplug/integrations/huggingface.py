@@ -95,6 +95,41 @@ class SysPlugTrainerCallback:
 
         self._stability_signal = StabilitySignal(window_size=50)
 
+    def _record_from_logs(self, step: int, logs: Optional[Dict[str, Any]]) -> None:
+        """Feed loss / gradient norm from a HF logs dict into the signal."""
+        if self._stability_signal is None or not logs:
+            return
+        loss = logs.get("loss")
+        if loss is not None:
+            self._stability_signal.record_loss(step, float(loss))
+        grad_norm = logs.get("grad_norm")
+        if grad_norm is not None:
+            self._stability_signal.record_grad_norm(step, float(grad_norm))
+
+    def on_log(
+        self,
+        args: Any,
+        state: Any,
+        control: Any,
+        logs: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Record metrics from the trainer's log event.
+
+        This is the primary path: the Hugging Face ``Trainer`` delivers metrics
+        (``loss``, ``grad_norm``, ``learning_rate``) to ``on_log`` every
+        ``logging_steps`` — **not** to ``on_step_end`` — so stability monitoring
+        is driven from here.
+
+        Args:
+            args: ``TrainingArguments`` instance.
+            state: ``TrainerState`` instance.
+            control: ``TrainerControl`` instance.
+            logs: The metrics dict for this log step.
+            **kwargs: Additional keyword arguments.
+        """
+        self._record_from_logs(state.global_step, logs if logs is not None else kwargs.get("logs"))
+
     def on_step_end(
         self,
         args: Any,
@@ -102,25 +137,19 @@ class SysPlugTrainerCallback:
         control: Any,
         **kwargs: Any,
     ) -> None:
-        """Record training loss and check for instability.
+        """Record loss/grad-norm if a caller provides ``logs`` here.
+
+        Note: the real HF ``Trainer`` does not pass ``logs`` to ``on_step_end``
+        (metrics arrive in :meth:`on_log`); this remains only for callers or
+        wrappers that do supply them.
 
         Args:
             args: ``TrainingArguments`` instance.
             state: ``TrainerState`` instance.
             control: ``TrainerControl`` instance.
-            **kwargs: May contain ``logs`` dict with the current loss.
+            **kwargs: May contain a ``logs`` dict with the current loss.
         """
-        if self._stability_signal is None:
-            return
-
-        logs: Dict[str, Any] = kwargs.get("logs", {})
-        loss = logs.get("loss")
-        if loss is not None:
-            self._stability_signal.record_loss(state.global_step, float(loss))
-
-        grad_norm = logs.get("grad_norm")
-        if grad_norm is not None:
-            self._stability_signal.record_grad_norm(state.global_step, float(grad_norm))
+        self._record_from_logs(state.global_step, kwargs.get("logs"))
 
     def on_epoch_end(
         self,
