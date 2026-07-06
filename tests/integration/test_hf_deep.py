@@ -117,18 +117,18 @@ class TestCallbackConstruction:
         assert cb._stability_signal is None
 
     def test_requires_transformers_installed(self):
-        """Without transformers, construction raises ImportError."""
+        """Without transformers importable, construction raises ImportError.
+
+        Setting the ``sys.modules`` entry to ``None`` makes ``import
+        transformers`` raise ImportError, which correctly simulates the module
+        being absent regardless of whether it is actually installed in the test
+        environment (popping it from sys.modules would not — the import would
+        just succeed again from disk).
+        """
         from sysplug.integrations.huggingface import SysPlugTrainerCallback
-        # Temporarily remove transformers
-        saved = sys.modules.pop("transformers", None)
-        try:
+        with patch.dict(sys.modules, {"transformers": None}):
             with pytest.raises(ImportError, match="transformers"):
                 SysPlugTrainerCallback(_make_advisor())
-        finally:
-            if saved is not None:
-                sys.modules["transformers"] = saved
-            else:
-                _install_fake_transformers()
 
 
 # ---------------------------------------------------------------------------

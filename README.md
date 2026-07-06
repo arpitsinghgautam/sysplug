@@ -1,8 +1,8 @@
 # SysPlug
 
 [![PyPI version](https://badge.fury.io/py/sysplug.svg)](https://badge.fury.io/py/sysplug)
-[![CI](https://github.com/your-org/sysplug/actions/workflows/tests.yml/badge.svg)](https://github.com/your-org/sysplug/actions/workflows/tests.yml)
-[![Coverage](https://codecov.io/gh/your-org/sysplug/branch/main/graph/badge.svg)](https://codecov.io/gh/your-org/sysplug)
+[![CI](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml/badge.svg)](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml)
+[![Coverage](https://codecov.io/gh/arpitsinghgautam/sysplug/branch/main/graph/badge.svg)](https://codecov.io/gh/arpitsinghgautam/sysplug)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
@@ -177,11 +177,11 @@ Please make sure all tests pass and coverage stays above 85%.
 If you use SysPlug in research, please cite:
 
 ```bibtex
-@software{sysplug2024,
+@software{sysplug2026,
   title   = {{SysPlug}: GPU-aware Hyperparameter Advisor for Deep Learning Training},
-  author  = {SysPlug Authors},
-  year    = {2024},
-  url     = {https://github.com/your-org/sysplug},
+  author  = {Gautam, Arpit Singh},
+  year    = {2026},
+  url     = {https://github.com/arpitsinghgautam/sysplug},
   version = {0.1.0},
 }
 ```

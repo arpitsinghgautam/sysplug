@@ -245,7 +245,7 @@ from transformers import Trainer
 training_args = cfg.to_training_arguments(
     output_dir="./checkpoints",
     num_train_epochs=3,
-    evaluation_strategy="epoch",
+    eval_strategy="epoch",  # `evaluation_strategy` was renamed in transformers>=4.46
     save_strategy="epoch",
     logging_steps=10,
 )
@@ -383,16 +383,18 @@ callback = SysPlugTrainerCallback.from_training_args(training_args, model=my_mod
 ```python
 from sysplug.integrations.deepspeed import patch_deepspeed_config
 import sysplug
+from sysplug.integrations.deepspeed import patch_deepspeed_config
 
 advisor = sysplug.Advisor(model="llama-2-7b", training_type="sft")
 cfg = advisor.suggest_config({"batch_size": 4, "parallelism": "zero3"})
 
-# Merge SysPlug settings into your DeepSpeed config
+# Merge SysPlug settings into your DeepSpeed config.
+# Signature is patch_deepspeed_config(ds_config, advisor) — config first.
 base_ds_config = {
     "scheduler": {"type": "WarmupLR"},
     "gradient_clipping": 1.0,
 }
-ds_config = patch_deepspeed_config(advisor, base_ds_config)
+ds_config = patch_deepspeed_config(base_ds_config, advisor)
 # ds_config now has batch_size, precision flags, ZeRO stage set by SysPlug
 ```
 
@@ -435,24 +437,23 @@ cfg = advisor.suggest_config({"batch_size": 8})
 # During PPO training
 for step in range(num_steps):
     # ... generate responses, compute rewards ...
-
-    advisor.record_reward(step, reward_score)
-    advisor.record_kl(step, kl_divergence)
+    # reward_mean / reward_std / kl come from your rollout batch:
+    advisor.record_reward(step, mean_reward=reward_mean, reward_std=reward_std)
+    advisor.record_kl(step, kl_divergence=kl)
 
     # Check for reward hacking (high reward + high KL)
     if advisor.detect_reward_hacking():
         print("Warning: possible reward hacking detected")
 
 print(advisor.reward_summary())
-# {"mean_reward": 0.72, "latest_kl": 0.04, "num_samples": 1000}
+# {"mean_reward": 0.72, "reward_std": 0.1, "latest_kl": 0.04,
+#  "reward_hacking_suspected": False}
 
-# PPO-specific config helper
-ppo_config = PPOConfigHelper(advisor).suggest(
-    rollout_batch_size=512,
-    target_kl=0.1,
-)
-print(f"PPO mini-batch: {ppo_config.mini_batch_size}")
-print(f"PPO epochs:     {ppo_config.ppo_epochs}")
+# PPO-specific config helper. suggest(ppo_epochs=4, num_envs=1)
+ppo_config = PPOConfigHelper(advisor).suggest(ppo_epochs=4, num_envs=8)
+print(f"PPO rollout batch: {ppo_config.rollout_batch_size}")
+print(f"PPO mini-batch:    {ppo_config.mini_batch_size}")
+print(f"PPO epochs:        {ppo_config.ppo_epochs}")
 ```
 
 ---
@@ -476,8 +477,8 @@ else:
         print(f"  Bandwidth:   {gpu.bandwidth_gbps:.0f} GB/s")
 
     print(f"\nTotal GPU count: {snap.gpu_count}")
-    print(f"Min free memory: {snap.min_free_memory_mb:.0f} MiB")
-    print(f"Avg utilisation: {snap.avg_gpu_utilization:.1f}%")
+    print(f"Min free memory: {snap.min_free_memory_mb():.0f} MiB")
+    print(f"Avg utilisation: {snap.avg_utilization_pct():.1f}%")
 
 # Poll continuously
 import time
