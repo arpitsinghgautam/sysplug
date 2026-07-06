@@ -88,7 +88,22 @@ python_version = "3.9"
 strict = true
 ignore_missing_imports = true
 warn_return_any = true
-warn_unused_ignores = true
+# Lazy optional imports carry `# type: ignore[import]` that is needed or not
+# depending on which third-party stubs happen to be installed, so an
+# "unused ignore" here is environment-dependent noise rather than a real issue.
+warn_unused_ignores = false
+# Only type-check the library; scripts/tests are exercised by the test suite.
+exclude = '^(tests|examples|paper|frontend)/'
+
+# Third-party packages are imported lazily and ship their own (sometimes
+# newer-than-3.9) syntax; don't follow into them.
+[[tool.mypy.overrides]]
+module = [
+    "torch.*", "transformers.*", "huggingface_hub.*", "accelerate.*",
+    "deepspeed.*", "pynvml.*", "psutil.*", "numpy.*", "scipy.*", "rich.*",
+]
+follow_imports = "skip"
+ignore_missing_imports = true
 
 [tool.black]
 line-length = 100

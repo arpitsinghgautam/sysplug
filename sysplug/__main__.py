@@ -10,6 +10,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 
 def _cmd_suggest(args: argparse.Namespace) -> None:
@@ -22,7 +23,7 @@ def _cmd_suggest(args: argparse.Namespace) -> None:
         objective=args.objective,
         verbose=True,
     )
-    config: dict = {
+    config: dict[str, Any] = {
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
         "precision": args.precision,

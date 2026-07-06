@@ -265,6 +265,8 @@ class Monitor:
         """Emit a reconfig suggestion based on the stability report."""
         action = report.recommended_action
         current = self._advisor.current_config
+        if current is None:
+            return
 
         change: dict[str, Any] = {}
         if action == "reduce_lr":
@@ -278,11 +280,11 @@ class Monitor:
             return
 
         try:
-            new_cfg = self._advisor.what_if(change, current_config=current)
+            result = self._advisor.what_if(change, current_config=current)
         except Exception:
             return
 
-        new_config = new_cfg.new_config if hasattr(new_cfg, "new_config") else new_cfg
+        new_config = result.new_config
 
         if self._reconfig_policy == "auto-apply":
             self._advisor._current_config = new_config

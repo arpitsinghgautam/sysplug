@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import IO
 
 from rich.console import Console
 
@@ -37,6 +38,7 @@ def get_console(verbose: bool = True) -> Console:
         import sys as _sys
 
         # Wrap stdout with UTF-8 encoding to avoid Windows cp1252 issues
+        safe_file: IO[str]
         if hasattr(_sys.stdout, "buffer"):
             safe_file = io.TextIOWrapper(
                 _sys.stdout.buffer, encoding="utf-8", errors="replace", newline=""
