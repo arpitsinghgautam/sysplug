@@ -55,7 +55,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from sysplug.memory_model import _BYTES_PER_PARAM, PrecisionMode
+from sysplug.memory_model import _BYTES_PER_PARAM, _infer_hidden_layers, PrecisionMode
 
 # ---------------------------------------------------------------------------
 # GPU spec table: peak dense tensor-core TFLOPS per precision.
@@ -141,28 +141,6 @@ def _get_gpu_spec(gpu_name: str) -> _GPUSpec:
 def _bytes_per_elem(prec: PrecisionMode) -> float:
     """Bytes per weight element for the given compute precision."""
     return _BYTES_PER_PARAM[prec]
-
-
-def _infer_hidden_layers(model_params: int) -> Tuple[int, int]:
-    """Infer transformer ``(hidden_size, num_layers)`` from a parameter count.
-
-    Uses the standard decoder relation ``params ≈ 12 · layers · hidden²`` with
-    an empirically-anchored aspect ratio ``hidden ≈ 2.1 · params**(1/3)``
-    (rounded to a multiple of 128). This reproduces real configs far better
-    than a flat heuristic — e.g. 7B → ~3968 hidden / ~37 layers (real Llama-7B
-    is 4096 / 32), 70B → ~8704 / ~77 (real 8192 / 80).
-
-    Args:
-        model_params: Total parameter count.
-
-    Returns:
-        ``(hidden_size, num_layers)``, both ≥ their sensible floors.
-    """
-    hidden = int(round(2.1 * (model_params ** (1.0 / 3.0)) / 128.0)) * 128
-    hidden = max(128, hidden)
-    layers = int(round(model_params / (12.0 * hidden * hidden)))
-    layers = max(1, layers)
-    return hidden, layers
 
 
 def _flops_per_step(

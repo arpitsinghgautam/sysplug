@@ -123,6 +123,26 @@ def _params_from_name(model_name: str) -> int:
     )
 
 
+def _infer_hidden_layers(param_count: int) -> Tuple[int, int]:
+    """Infer transformer ``(hidden_size, num_layers)`` from a parameter count.
+
+    Uses the standard decoder relation ``params ≈ 12 · layers · hidden²`` with an
+    empirically-anchored aspect ratio ``hidden ≈ 2.1 · params**(1/3)`` (rounded
+    to a multiple of 128). Reproduces real configs far better than a flat
+    heuristic — e.g. 7B → ~3968 hidden / ~37 layers (real Llama-7B is 4096 / 32),
+    70B → ~8704 / ~77 (real 8192 / 80).
+
+    Args:
+        param_count: Total parameter count.
+
+    Returns:
+        ``(hidden_size, num_layers)``, each at least its sensible floor.
+    """
+    hidden = max(128, int(round(2.1 * (param_count ** (1.0 / 3.0)) / 128.0)) * 128)
+    layers = max(1, int(round(param_count / (12.0 * hidden * hidden))))
+    return hidden, layers
+
+
 # ---------------------------------------------------------------------------
 # Output dataclasses
 # ---------------------------------------------------------------------------
@@ -272,15 +292,16 @@ class MemoryModel:
         hidden_dim: Optional[int],
         num_layers: Optional[int],
     ) -> Tuple[int, int]:
-        """Infer hidden_dim and num_layers from param count if not provided."""
-        # Rough heuristic: a typical transformer has hidden_dim ≈ 128 * (params/1e9)^0.4
-        # and num_layers ≈ hidden_dim / 128
-        billions = param_count / 1e9
-        if hidden_dim is None:
-            hidden_dim = max(64, int(128 * (billions ** 0.4)))
-        if num_layers is None:
-            num_layers = max(2, hidden_dim // 128)
-        return hidden_dim, num_layers
+        """Infer hidden_dim and num_layers from param count when not provided.
+
+        Only the missing dimension(s) are inferred; explicit values pass
+        through unchanged. See :func:`_infer_hidden_layers`.
+        """
+        inferred_h, inferred_l = _infer_hidden_layers(param_count)
+        return (
+            hidden_dim if hidden_dim else inferred_h,
+            num_layers if num_layers else inferred_l,
+        )
 
     @staticmethod
     def _optimizer_states_mb(
