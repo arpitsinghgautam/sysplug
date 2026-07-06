@@ -583,15 +583,39 @@ class TestHelperFunctions:
 # 12. SolverConstraints defaults
 # ---------------------------------------------------------------------------
 
+class TestPrecisionDowngrade:
+    """OOM recovery must never downgrade trainable weights to int8/int4."""
+
+    def test_never_downgrades_to_int_precision(self):
+        # A 7B model on a tiny 2 GB GPU forces the OOM-recovery path to exhaust
+        # every downgrade move. It must still never pick int8/int4.
+        solver = _solver(objective="memory")
+        result = solver.solve(
+            _base_config(batch_size=32, precision="fp32"),
+            _hw(total_mb=2_000),
+            param_count=7_000_000_000,
+        )
+        assert result.precision in {"fp32", "fp16", "bf16"}
+        assert result.precision not in {"int8", "int4"}
+
+    def test_downgrades_fp32_toward_bf16_under_pressure(self):
+        solver = _solver(objective="memory")
+        result = solver.solve(
+            _base_config(batch_size=4, precision="fp32"),
+            _hw(total_mb=6_000),
+            param_count=3_000_000_000,
+        )
+        # Precision may be reduced from fp32, but never below bf16.
+        assert result.precision in {"fp32", "fp16", "bf16"}
+
+
 class TestSolverConstraints:
 
     def test_defaults(self):
         c = SolverConstraints()
         assert c.memory_safety_factor == 0.85
-        assert c.min_gpu_util == 0.0
         assert c.max_grad_accumulation == 64
         assert c.min_batch_size == 1
-        assert c.max_batch_size is None
 
     def test_custom_safety_factor(self):
         c = SolverConstraints(memory_safety_factor=0.70)

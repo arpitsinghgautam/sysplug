@@ -375,7 +375,6 @@ class MemoryModel:
         optimizer: str = "adamw",
         parallelism: str = "none",
         use_gradient_checkpointing: bool = False,
-        gradient_accumulation_steps: int = 1,
         sequence_length: int = 512,
         hidden_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
@@ -393,7 +392,6 @@ class MemoryModel:
                 ``"none"``, ``"dp"``, ``"ddp"``, ``"fsdp"``,
                 ``"zero1"``, ``"zero2"``, ``"zero3"``.
             use_gradient_checkpointing: Whether gradient checkpointing is enabled.
-            gradient_accumulation_steps: Number of gradient accumulation steps.
             sequence_length: Token sequence length (for activation estimate).
             hidden_dim: Model hidden dimension; estimated if not provided.
             num_layers: Number of transformer layers; estimated if not given.

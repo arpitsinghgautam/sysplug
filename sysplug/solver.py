@@ -35,8 +35,11 @@ from sysplug.utils.scaling_rules import (
     warmup_steps_for_batch,
 )
 
-# Precision downgrade order (most → least memory-hungry)
-_PRECISION_DOWNGRADE: list[str] = ["fp32", "fp16", "bf16", "int8", "int4"]
+# Precision downgrade order for OOM recovery (most → least memory-hungry).
+# Stops at bf16: int8/int4 are quantized inference/storage formats, not valid
+# formats for the *trainable* weights the solver configures. Below bf16 the
+# solver relies on gradient checkpointing and smaller batches instead.
+_PRECISION_DOWNGRADE: list[str] = ["fp32", "fp16", "bf16"]
 
 # Precision upgrade for throughput (safe upgrades only)
 _PRECISION_UPGRADE: dict[str, str] = {"fp32": "bf16", "fp16": "bf16"}
@@ -49,17 +52,13 @@ class SolverConstraints:
     Attributes:
         memory_safety_factor: Maximum fraction of GPU VRAM that may be used
             (default 0.85 → leave 15% headroom).
-        min_gpu_util: Minimum acceptable GPU utilisation fraction (default 0.0).
         max_grad_accumulation: Upper limit on gradient accumulation steps.
         min_batch_size: Minimum allowable per-device batch size.
-        max_batch_size: Maximum allowable per-device batch size (``None`` = no limit).
     """
 
     memory_safety_factor: float = 0.85
-    min_gpu_util: float = 0.0
     max_grad_accumulation: int = 64
     min_batch_size: int = 1
-    max_batch_size: Optional[int] = None
 
 
 def _effective_batch(batch_size: int, grad_acc: int, gpu_count: int) -> int:
@@ -225,7 +224,6 @@ class ConfigSolver:
             optimizer=cfg["optimizer"],
             parallelism=cfg["parallelism"],
             use_gradient_checkpointing=cfg["use_gradient_checkpointing"],
-            gradient_accumulation_steps=cfg["gradient_accumulation"],
             sequence_length=sequence_length,
         )
 
