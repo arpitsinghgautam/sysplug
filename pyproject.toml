@@ -59,6 +59,9 @@ sysplug = "sysplug.__main__:main"
 where = ["."]
 include = ["sysplug*"]
 
+[tool.setuptools.package-data]
+sysplug = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=sysplug --cov-report=term-missing --cov-fail-under=85"
