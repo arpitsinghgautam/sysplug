@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected crash-on-copy-paste examples in `USAGE.md`
   (`patch_deepspeed_config` argument order, `PPOConfigHelper.suggest` kwargs,
   `HardwareSnapshot` methods, `eval_strategy`, `reward_summary` keys).
+- **`StabilitySignal` now flags a NaN/Inf loss as hard divergence** instead of
+  silently dropping it (the classic blow-up signal was previously ignored).
+- **Solver no longer downgrades trainable weights to int8/int4** during OOM
+  recovery (quantized inference formats, not training precisions); the ladder
+  stops at bf16.
+- **Hugging Face callback records metrics in `on_log`** (the real Trainer path)
+  rather than `on_step_end`, where `logs` is never provided — the stability
+  check was effectively a no-op under a real Trainer.
+- **`MemoryModel` architecture inference corrected** (~284 hidden / 2 layers for
+  a 7B model → ~3968 / 37); shared with the throughput model.
+- Removed the dead `gradient_accumulation_steps` parameter and the unused
+  `SolverConstraints.min_gpu_util` / `max_batch_size` fields.
+- Frontend dashboard: bind to `127.0.0.1` by default and validate/bound all
+  request inputs (HTTP 422 instead of 500/overflow).
 
 ### Added
 - `paper/experiments/measure_gpu.py`: a real forward+backward+optimizer harness
@@ -37,11 +51,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community health files: `CONTRIBUTING.md`, `SECURITY.md`,
   `CODE_OF_CONDUCT.md`, issue/PR templates; plus `.gitignore` and
   `.gitattributes`.
-- Python 3.12 / 3.13 classifiers.
+- Python 3.12 / 3.13 classifiers, and a `py.typed` marker (PEP 561) so the
+  package's type hints ship to downstream users.
+- CI: CodeQL security scanning, Dependabot (pip + actions), and a
+  `.pre-commit-config.yaml`.
 
 ### Changed
 - `ThroughputModel.fit_empirical` now fits step-time vs. batch (a saturating
   throughput curve) instead of an unbounded linear samples/sec fit.
+- CI now blocks on strict `mypy`, the full ruff ruleset, and `ruff format
+  --check`, and runs a Python 3.9–3.13 matrix plus Windows/macOS spot-checks
+  (previously mypy was advisory, ruff under-selected, and Linux/3.9–3.11 only).
+- `publish.yml` uses OIDC trusted publishing only (removed the contradictory
+  `PYPI_TOKEN`) with a tag-equals-version guard.
+- Removed the orphaned fabricated experiment scripts (`run_*_eval.sh`,
+  `collect_results.py`).
 - Paper: replaced fabricated/placeholder result tables (LLaMA-3-8B, Mistral-7B,
   ImageNet) and the abstract's invented headline numbers with a reproducible
   single-GPU GPT-2 validation using real measured data; figures now plot real
