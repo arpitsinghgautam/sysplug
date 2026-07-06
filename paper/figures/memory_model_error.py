@@ -1,21 +1,25 @@
-"""Generate memory model prediction error plot for the paper.
+"""Memory model validation figure: predicted vs measured peak VRAM.
+
+Plots real measurements from ``results/gpu_measurements.json`` (produced by
+``python -m paper.experiments.measure_gpu``). No synthetic or mock data is used.
 
 Usage::
 
-    python paper/figures/memory_model_error.py --mock
-    python paper/figures/memory_model_error.py  # requires GPU
+    python -m paper.experiments.measure_gpu          # produce the JSON first
+    python paper/figures/memory_model_error.py       # then the figure
 """
 
 from __future__ import annotations
 
 import argparse
-import random
+import json
+from pathlib import Path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mock", action="store_true")
-    parser.add_argument("--output", default="memory_model_error.pdf")
+    parser.add_argument("--results", default="paper/data/gpu_measurements.json")
+    parser.add_argument("--output", default="memory_model_error.png")
     args = parser.parse_args()
 
     try:
@@ -25,45 +29,52 @@ def main() -> None:
         print("matplotlib required: pip install matplotlib")
         return
 
-    from sysplug.memory_model import MemoryModel
+    results_path = Path(args.results)
+    if not results_path.exists():
+        raise SystemExit(
+            f"{results_path} not found. Run `python -m paper.experiments.measure_gpu` first."
+        )
+    data = json.loads(results_path.read_text())
+    rows = data["comparison"]["rows"]
+    mape = data["comparison"]["memory_mape_vs_allocated_pct"]
+    gpu = data["gpu_name"]
 
-    rng = random.Random(42)
-    model = MemoryModel()
-    precisions = ["fp32", "fp16", "bf16"]
-    param_counts = [125_000_000, 345_000_000, 1_300_000_000, 7_000_000_000]
-    batch_sizes = [1, 2, 4, 8, 16]
+    measured = np.array([r["measured_mib_alloc"] for r in rows]) / 1024.0  # GiB
+    predicted = np.array([r["pred_mib"] for r in rows]) / 1024.0
+    configs = [r["config"] for r in rows]
 
-    results = {"fp32": [], "fp16": [], "bf16": []}
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
 
-    for prec in precisions:
-        for params in param_counts:
-            for bs in batch_sizes:
-                pred = model.predict(params, bs, prec, "adamw").peak_memory_mb
-                if args.mock:
-                    actual = pred * rng.uniform(0.75, 1.25)
-                else:
-                    actual = pred  # placeholder
+    # Left: predicted vs measured scatter with the y=x ideal line.
+    ax = axes[0]
+    uniq = sorted(set(configs))
+    colors = plt.cm.viridis(np.linspace(0.15, 0.85, len(uniq)))
+    for cfg, color in zip(uniq, colors):
+        idx = [i for i, c in enumerate(configs) if c == cfg]
+        ax.scatter(measured[idx], predicted[idx], color=color, label=cfg, s=40)
+    lim = max(measured.max(), predicted.max()) * 1.05
+    ax.plot([0, lim], [0, lim], "k--", alpha=0.5, label="ideal (y=x)")
+    ax.set_xlabel("Measured peak VRAM (GiB)")
+    ax.set_ylabel("Predicted peak VRAM (GiB)")
+    ax.set_title(f"Memory Prediction vs. Measurement\n{gpu} (MAPE {mape:.1f}%)", fontsize=9)
+    ax.legend(fontsize=8)
+    ax.set_xlim(0, lim)
+    ax.set_ylim(0, lim)
 
-                error = abs(pred - actual) / max(actual, 1.0) * 100
-                results[prec].append(error)
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-
-    positions = [1, 2, 3]
-    data = [results[p] for p in precisions]
-    bp = ax.boxplot(data, positions=positions, labels=precisions, patch_artist=True)
-
-    colors = ["#2196F3", "#FF9800", "#4CAF50"]
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-
-    ax.set_xlabel("Precision")
-    ax.set_ylabel("Absolute Percentage Error (%)")
-    ax.set_title("SysPlug Memory Model Prediction Error")
-    ax.axhline(y=15, linestyle="--", color="red", alpha=0.5, label="15% threshold")
-    ax.legend()
-    ax.set_ylim(0, 50)
+    # Right: signed percentage error per point (shows large-batch under-prediction).
+    ax = axes[1]
+    err = 100.0 * (predicted - measured) / measured
+    labels = [f"{r['config'].replace('gpt2-', '')}\nbs{r['batch_size']}" for r in rows]
+    bar_colors = ["#4CAF50" if abs(e) <= 15 else "#FF9800" for e in err]
+    ax.bar(range(len(err)), err, color=bar_colors)
+    ax.axhline(0, color="k", linewidth=0.8)
+    ax.axhline(15, linestyle="--", color="red", alpha=0.4)
+    ax.axhline(-15, linestyle="--", color="red", alpha=0.4, label="±15%")
+    ax.set_xticks(range(len(err)))
+    ax.set_xticklabels(labels, fontsize=6, rotation=0)
+    ax.set_ylabel("Prediction error (%)")
+    ax.set_title("Signed error per (model, batch)\n(under-predicts at large batch)", fontsize=9)
+    ax.legend(fontsize=8)
 
     plt.tight_layout()
     plt.savefig(args.output, dpi=150)

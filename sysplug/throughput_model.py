@@ -98,8 +98,10 @@ _GPU_SPECS: list[_GPUSpec] = [
     _GPUSpec("RTX 3090", 35.6,   71.0,   71.0),
     _GPUSpec("RTX 3080", 29.8,   59.5,   59.5),
     # Workstation / laptop Blackwell.
-    # NOTE: provisional peak — refine via measurement + calibration on device.
-    _GPUSpec("RTX PRO 5000", 60.0, 250.0, 250.0),
+    # RTX PRO 5000 values are effective sustained estimates anchored to
+    # measured ~14 TFLOPS bf16 achievable on GPT-2 training on the laptop
+    # (power/thermal-limited); calibrate per-device for accuracy.
+    _GPUSpec("RTX PRO 5000", 22.0, 44.0, 44.0),
     _GPUSpec("RTX 5090",  105.0, 210.0, 210.0),
 ]
 

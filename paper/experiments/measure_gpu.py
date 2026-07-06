@@ -178,8 +178,15 @@ def run(
     steps: int,
     precision: str,
     seed: int,
+    mem_fraction: float = 0.9,
 ) -> Dict:
     device = torch.device("cuda")
+    # Cap the caching allocator so an over-budget config raises a clean
+    # OutOfMemoryError at the PyTorch level. Without this, on Windows/WDDM the
+    # driver silently spills into shared system RAM and the run crawls at 100%
+    # utilisation instead of stopping.
+    if 0.0 < mem_fraction < 1.0:
+        torch.cuda.set_per_process_memory_fraction(mem_fraction, 0)
     gpu_name = torch.cuda.get_device_name(0)
     measurements: List[Measurement] = []
 
@@ -299,6 +306,9 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=20)
     ap.add_argument("--precision", default="bf16", choices=["bf16", "fp16", "fp32"])
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--mem-fraction", type=float, default=0.9,
+                    help="Cap the CUDA allocator to this fraction of total VRAM "
+                         "so over-budget configs OOM cleanly (avoids WDDM spill).")
     ap.add_argument("--out", default="results/gpu_measurements.json")
     args = ap.parse_args()
 
@@ -310,7 +320,8 @@ def main() -> None:
           f"precision={args.precision} steps={args.steps}\n")
 
     results = run(
-        args.configs, args.batch_sizes, args.seq, args.steps, args.precision, args.seed
+        args.configs, args.batch_sizes, args.seq, args.steps, args.precision, args.seed,
+        args.mem_fraction,
     )
     summary = _compare_and_calibrate(results)
     results["comparison"] = summary

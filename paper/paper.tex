@@ -48,10 +48,12 @@ solver, and an online stability monitor.  SysPlug operates at zero additional
 training cost: it analyses the model architecture and hardware specification
 \emph{before} training begins and recommends a safe, efficient configuration.
 It integrates with Hugging Face Trainer, DeepSpeed, and raw PyTorch loops.
-Experiments on four training regimes (SFT, DPO, vision classification, and
-prediction accuracy benchmarks) show that SysPlug reduces OOM failures by
-$87\%$ and increases average GPU utilisation from $34\%$ to $71\%$ compared
-to default configurations.
+We validate SysPlug's predictive models against real GPT-2 training
+(125M--775M parameters) on a single 24\,GB GPU: after light calibration its
+throughput predictions reach a mean absolute percentage error (MAPE) of
+$7.3\%$, and its from-scratch memory predictions a MAPE of $14.9\%$, enabling
+it to recommend memory-safe, throughput-aware configurations without any trial
+runs.
 \end{abstract}
 
 %% -----------------------------------------------------------------------
@@ -293,83 +295,106 @@ Total & $\approx$2000 & $\approx$1370 \\
 \section{Evaluation}
 %% -----------------------------------------------------------------------
 
-We evaluate SysPlug across four experiments.
-
-\subsection{Exp.\ 1: SFT Training (LLaMA-3-8B)}
-
-\textit{Setup:} Fine-tune LLaMA-3-8B on Alpaca-52K using Hugging Face Trainer
-on 4$\times$A100-40GB.  Compare default config (batch=1, fp32, no ZeRO) vs
-SysPlug-recommended config.
+We validate SysPlug's two quantitative models --- throughput and memory ---
+against real training measurements. All numbers below are \emph{measured} and
+reproducible via \texttt{paper/experiments/measure\_gpu.py}, collected on the
+stack in Table~\ref{tab:setup}. We deliberately report single-GPU results on
+commodity hardware rather than large multi-node runs so that every figure can
+be independently reproduced.
 
 \begin{table}[h]
 \centering
-\caption{SFT results on LLaMA-3-8B, 4$\times$A100-40GB.}
-\label{tab:sft}
+\caption{Validation hardware and software.}
+\label{tab:setup}
+\begin{tabular}{ll}
+\toprule
+Component & Value \\
+\midrule
+GPU & NVIDIA RTX PRO 5000 Blackwell (Laptop), 24\,GB \\
+Driver / CUDA & 596.72 / 12.8 \\
+Framework & PyTorch 2.11.0 \\
+Models & GPT-2 family (125M / 356M / 775M params) \\
+Workload & causal LM, seq.\ length 512, bf16, AdamW \\
+Protocol & median of 20 timed steps after 3 warmup steps \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Exp.\ 1: Throughput Prediction}
+
+For each model we sweep batch size until OOM, measuring median samples/sec over
+real forward+backward+optimizer steps. The corrected roofline reproduces the
+characteristic \emph{ramp-then-plateau} curve (throughput rises with batch until
+the GPU saturates); after light per-model calibration (\texttt{fit\_empirical}
+on the measured points) predictions track measurements to a mean absolute
+percentage error (MAPE) of $7.3\%$ (Table~\ref{tab:tput}).
+
+\begin{table}[h]
+\centering
+\caption{Throughput validation (samples/sec), GPT-2 on RTX PRO 5000.
+Calibrated MAPE $=7.3\%$.}
+\label{tab:tput}
 \begin{tabular}{lrrr}
 \toprule
-Config & Peak Mem (GiB) & Throughput (tok/s) & OOM \\
+Model & Batch & Measured & SysPlug \\
 \midrule
-Default & 38.2 & 1,240 & Yes \\
-SysPlug & 32.4 & 3,890 & No \\
-\midrule
-$\Delta$ & $-15\%$ & $+214\%$ & — \\
+GPT-2 125M & 1  & 11.7 & 16.8 \\
+           & 4  & 30.6 & 26.9 \\
+           & 8  & 33.2 & 29.8 \\
+           & 16 & 30.6 & 31.6 \\
+GPT-2 356M & 1  & 6.3  & 6.5  \\
+           & 4  & 11.2 & 11.1 \\
+           & 8  & 12.5 & 12.6 \\
+GPT-2 775M & 1  & 2.8  & 2.9  \\
+           & 2  & 4.5  & 4.4  \\
+           & 4  & 5.7  & 5.8  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-[Placeholder: actual results to be filled in after running \texttt{paper/experiments/run\_sft\_eval.sh}]
+Before this work the throughput model was \emph{batch-invariant}: its arithmetic
+intensity algebraically reduced to $3S$, cancelling batch size out of the
+predicted throughput entirely so that every batch returned an identical value.
+The corrected model --- weights read once per step and reused across the batch,
+activation traffic scaling with batch, and a fixed per-step overhead ---
+restores the correct dependence, and a regression test now guards against
+reintroducing the bug.
 
-\subsection{Exp.\ 2: DPO Training}
+\subsection{Exp.\ 2: Memory Prediction}
 
-\textit{Setup:} DPO fine-tuning of Mistral-7B on UltraFeedback with custom
-training loop.  Evaluate on 1$\times$A100-40GB.
+We compare \texttt{MemoryModel.predict()} against
+\texttt{torch.cuda.max\_memory\_allocated()} over the same batch sweep
+(Table~\ref{tab:mem}). The from-scratch analytic model --- given only parameter
+count, batch, sequence length, precision, and optimizer --- achieves a MAPE of
+$14.9\%$ against allocated memory ($18.8\%$ against the caching allocator's
+reserved high-water mark).
 
 \begin{table}[h]
 \centering
-\caption{DPO results on Mistral-7B, 1$\times$A100-40GB.}
-\label{tab:dpo}
+\caption{Memory validation (peak MiB, allocated), GPT-2 on RTX PRO 5000.
+MAPE $=14.9\%$.}
+\label{tab:mem}
 \begin{tabular}{lrrr}
 \toprule
-Config & Peak Mem (GiB) & Tokens/s & OOM rate \\
+Model & Batch & Measured & SysPlug \\
 \midrule
-Default & 37.1 & 580 & $4/10$ \\
-SysPlug & 31.7 & 1,230 & $0/10$ \\
+GPT-2 125M & 1 & 2490  & 2717  \\
+           & 8 & 7715  & 4859  \\
+GPT-2 356M & 1 & 6904  & 6746  \\
+           & 8 & 16192 & 12458 \\
+GPT-2 775M & 1 & 15307 & 13861 \\
+           & 4 & 20060 & 18451 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-[Placeholder]
-
-\subsection{Exp.\ 3: Vision Classification}
-
-\textit{Setup:} ResNet-50 and ViT-L/16 on ImageNet-1K.  1$\times$RTX 3090.
-
-[Placeholder table]
-
-\subsection{Exp.\ 4: Memory Prediction Accuracy}
-
-We measure the MAPE of MemoryModel.predict() against
-\texttt{torch.cuda.max\_memory\_allocated()} over 50 (model, batch, precision)
-combinations.
-
-\begin{table}[h]
-\centering
-\caption{Memory prediction accuracy (MAPE \%).}
-\label{tab:mape}
-\begin{tabular}{lrr}
-\toprule
-Precision & Uncalibrated & Calibrated \\
-\midrule
-FP32  & 18.3 & 8.1 \\
-FP16  & 14.7 & 7.4 \\
-BF16  & 13.9 & 6.8 \\
-\midrule
-All   & 15.6 & 7.4 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-[Placeholder: run \texttt{paper/experiments/run\_prediction\_bench.sh}]
+The model is most accurate at small batch and progressively under-predicts as
+batch grows, because full ($O(S^2)$) attention-score buffers --- not captured by
+the linear $34{\cdot}L{\cdot}B{\cdot}S{\cdot}H$ activation term --- come to
+dominate. This is a known limitation (Section~\ref{sec:limitations}). Even so,
+the model correctly identifies the OOM boundary for each model (the batch at
+which it exceeds 24\,GB), which is what the solver relies on to produce
+memory-safe recommendations.
 
 %% -----------------------------------------------------------------------
 \section{Related Work}
@@ -396,7 +421,13 @@ single pip-installable library.
 
 %% -----------------------------------------------------------------------
 \section{Discussion and Limitations}
+\label{sec:limitations}
 %% -----------------------------------------------------------------------
+
+\textbf{Single-GPU validation.}  Our measurements cover the GPT-2 family on one
+consumer-class GPU. The analytic models extend to larger models and multi-GPU
+setups by construction, but those regimes are not yet empirically validated
+here.
 
 \textbf{Model coverage.}  The activation memory formula assumes a standard
 transformer architecture.  Mixture-of-Experts, state-space models (Mamba,
