@@ -81,6 +81,12 @@ class StabilitySignal:
         self._losses: Deque[Tuple[int, float]] = deque(maxlen=window_size)
         self._grad_norms: Deque[Tuple[int, float]] = deque(maxlen=window_size)
 
+        # Sticky flag: a non-finite (NaN/Inf) loss is hard divergence and must
+        # never be silently dropped. Once seen, the run is flagged as diverged
+        # until reset().
+        self._nonfinite_loss = False
+        self._nonfinite_step = -1
+
     # ------------------------------------------------------------------
     # Recording
     # ------------------------------------------------------------------
@@ -90,10 +96,14 @@ class StabilitySignal:
 
         Args:
             step: Global training step index.
-            loss: Loss value (must be finite).
+            loss: Loss value. A non-finite (NaN/Inf) loss is recorded as hard
+                divergence rather than dropped.
         """
         if math.isfinite(loss):
             self._losses.append((step, loss))
+        else:
+            self._nonfinite_loss = True
+            self._nonfinite_step = step
 
     def record_grad_norm(self, step: int, grad_norm: float) -> None:
         """Record a gradient L2-norm at a given step.
@@ -124,6 +134,21 @@ class StabilitySignal:
             >>> report.is_diverging
             True
         """
+        # Hard divergence: a NaN/Inf loss was seen. This outranks everything
+        # else and is reported even with an otherwise-empty window.
+        if self._nonfinite_loss:
+            return StabilityReport(
+                is_diverging=True,
+                recommended_action="reduce_lr",
+                message=(
+                    f"Non-finite (NaN/Inf) loss at step {self._nonfinite_step}: "
+                    "training has diverged. Reduce the learning rate (and check "
+                    "for bad inputs / fp16 overflow)."
+                ),
+                window_size=len(self._losses),
+                current_loss=float("inf"),
+            )
+
         if len(self._losses) < 2:
             return StabilityReport(
                 window_size=len(self._losses),
@@ -230,6 +255,8 @@ class StabilitySignal:
         """Clear all recorded history."""
         self._losses.clear()
         self._grad_norms.clear()
+        self._nonfinite_loss = False
+        self._nonfinite_step = -1
 
     @property
     def window_size(self) -> int:

@@ -7,6 +7,43 @@ import pytest
 from sysplug.stability import StabilitySignal, StabilityReport
 
 
+class TestNonFiniteLoss:
+    """A NaN/Inf loss is hard divergence and must be flagged, not dropped."""
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_nonfinite_loss_flags_divergence(self, bad: float) -> None:
+        signal = StabilitySignal(window_size=10)
+        signal.record_loss(0, 1.0)
+        signal.record_loss(1, bad)
+        report = signal.check()
+        assert report.is_diverging
+        assert report.recommended_action == "reduce_lr"
+        assert "diverged" in report.message.lower()
+
+    def test_nonfinite_reported_even_with_empty_window(self) -> None:
+        signal = StabilitySignal(window_size=5)
+        signal.record_loss(3, float("nan"))  # first and only sample
+        report = signal.check()
+        assert report.is_diverging
+        assert "step 3" in report.message
+
+    def test_reset_clears_divergence(self) -> None:
+        signal = StabilitySignal(window_size=5)
+        signal.record_loss(0, float("nan"))
+        assert signal.check().is_diverging
+        signal.reset()
+        signal.record_loss(0, 1.0)
+        assert not signal.check().is_diverging
+
+    def test_finite_losses_still_recorded(self) -> None:
+        signal = StabilitySignal(window_size=5)
+        signal.record_loss(0, 1.0)
+        signal.record_loss(1, float("nan"))
+        signal.record_loss(2, 1.2)
+        # NaN did not consume a slot; the two finite losses are both present.
+        assert signal.num_recorded_steps == 2
+
+
 class TestStabilitySignalBasic:
     def test_not_enough_data(self) -> None:
         signal = StabilitySignal(window_size=5)
