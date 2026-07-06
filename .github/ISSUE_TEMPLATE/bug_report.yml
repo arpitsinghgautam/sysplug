@@ -1,0 +1,41 @@
+name: Bug report
+description: Report something that isn't working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug! Please fill in the details below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code snippet or command that reproduces the issue.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: sysplug-version
+    attributes:
+      label: SysPlug version
+      placeholder: "0.1.0 (or commit SHA)"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, GPU (if any), torch/CUDA versions.
+      placeholder: |
+        - OS: Windows 11
+        - Python: 3.12.10
+        - GPU: RTX PRO 5000 (24 GB), CUDA 12.8
+        - torch: 2.11.0
+    validations:
+      required: true
