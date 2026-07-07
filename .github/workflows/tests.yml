@@ -44,10 +44,10 @@ jobs:
         os: [ubuntu-latest]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
-          # Spot-check the other platforms on one Python version.
+          # Spot-check Windows on one Python version. (macOS is omitted for now:
+          # the torch CPU wheel index does not serve macOS — re-add with a
+          # per-OS install once the Linux/Windows baseline is green.)
           - os: windows-latest
-            python-version: "3.12"
-          - os: macos-latest
             python-version: "3.12"
 
     steps:

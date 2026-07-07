@@ -53,8 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.gitattributes`.
 - Python 3.12 / 3.13 classifiers, and a `py.typed` marker (PEP 561) so the
   package's type hints ship to downstream users.
-- CI: CodeQL security scanning, Dependabot (pip + actions), and a
-  `.pre-commit-config.yaml`.
+- CI: Dependabot (pip + actions) and a `.pre-commit-config.yaml`. (Code
+  scanning is enabled via GitHub's default setup on the public repo.)
 
 ### Changed
 - `ThroughputModel.fit_empirical` now fits step-time vs. batch (a saturating
