@@ -1,14 +1,19 @@
 # SysPlug
 
-[![PyPI version](https://badge.fury.io/py/sysplug.svg)](https://badge.fury.io/py/sysplug)
 [![CI](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml/badge.svg)](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml)
-[![Coverage](https://codecov.io/gh/arpitsinghgautam/sysplug/branch/main/graph/badge.svg)](https://codecov.io/gh/arpitsinghgautam/sysplug)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
+
+<!-- The PyPI and Codecov badges are intentionally omitted until the package is
+     published to PyPI and the repository is connected to codecov.io. -->
+
+![SysPlug architecture](docs/architecture.svg)
 
 **GPU-aware hyperparameter advisor for any deep learning training loop.**
 
-SysPlug analyses your GPU hardware, estimates memory and throughput requirements, and recommends the optimal batch size, learning rate, precision, gradient accumulation, and parallelism strategy for your training run — before you waste hours hitting OOM or under-utilizing hardware.
+SysPlug analyses your GPU hardware, estimates memory and throughput requirements, and recommends the optimal batch size, learning rate, precision, gradient accumulation, and parallelism strategy for your training run, before you waste hours hitting OOM or under-utilizing hardware.
 
 ## Quick Start
 
@@ -144,20 +149,20 @@ python -m sysplug version
 | LR scaling rules | ✅ | ❌ | ❌ | Manual |
 | Online instability detection | ✅ | ❌ | ❌ | ❌ |
 | ZeRO / FSDP awareness | ✅ | ❌ | ❌ | Manual |
-| HF Trainer integration | ✅ | ✅ | ✅ | — |
+| HF Trainer integration | ✅ | ✅ | ✅ | N/A |
 | What-if analysis | ✅ | ❌ | ❌ | ❌ |
-| No GPU required for suggestions | ✅ | ❌ | ❌ | — |
-| Pip installable | ✅ | ✅ | ✅ | — |
+| No GPU required for suggestions | ✅ | ❌ | ❌ | N/A |
+| Pip installable | ✅ | ✅ | ✅ | N/A |
 
 ## How It Works
 
 SysPlug combines three components:
 
-1. **MemoryModel** — static analytic model estimating peak GPU VRAM from parameter count, batch size, precision, optimizer, and parallelism strategy (ZeRO-0 through ZeRO-3, FSDP).
+1. **MemoryModel**: static analytic model estimating peak GPU VRAM from parameter count, batch size, precision, optimizer, and parallelism strategy (ZeRO-0 through ZeRO-3, FSDP).
 
-2. **ThroughputModel** — roofline-based throughput predictor using GPU hardware specs (peak FLOP/s, memory bandwidth) and the standard 6×params×seq×batch FLOP estimate.
+2. **ThroughputModel**: roofline-based throughput predictor using GPU hardware specs (peak FLOP/s, memory bandwidth), where per-step compute is 6×params×seq×batch, weight traffic is read once per step, and activation traffic scales with batch (so throughput ramps then plateaus).
 
-3. **ConfigSolver** — constrained optimiser that explores the configuration space (batch size, gradient accumulation, precision, LR) subject to GPU memory constraints and applies literature-backed LR scaling rules (Goyal et al. 2017, Krizhevsky 2014).
+3. **ConfigSolver**: constrained solver that adjusts the configuration (batch size, gradient accumulation, precision, LR) subject to GPU memory constraints and applies literature-backed LR scaling rules (Goyal et al. 2017, Krizhevsky 2014).
 
 The `Monitor` runs these checks in a background thread during training, detecting loss divergence and OOM risk without blocking the training loop.
 
@@ -188,4 +193,4 @@ If you use SysPlug in research, please cite:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.

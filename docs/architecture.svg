@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 590" width="960" height="590" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="SysPlug system architecture diagram">
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowfb" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#d97706"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- card background -->
+  <rect x="0.5" y="0.5" width="959" height="589" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+
+  <!-- title -->
+  <text x="30" y="40" font-size="23" font-weight="700" fill="#0f172a">SysPlug</text>
+  <text x="150" y="40" font-size="14" fill="#475569">GPU-aware hyperparameter advisor</text>
+  <text x="30" y="62" font-size="13" fill="#64748b">From a model and hardware to a memory-safe, throughput-tuned training configuration, with no trial runs.</text>
+
+  <!-- Advisor container around the orchestrated engine -->
+  <rect x="196" y="96" width="562" height="150" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-dasharray="5 4" opacity="0.55"/>
+  <text x="210" y="116" font-size="12.5" font-weight="700" fill="#4338ca">Advisor.suggest_config()</text>
+
+  <!-- main pipeline row -->
+  <!-- b1 Inputs -->
+  <g filter="url(#shadow)">
+    <rect x="18" y="138" width="170" height="82" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+  <text x="103" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">Inputs</text>
+  <text x="103" y="184" font-size="10.5" fill="#475569" text-anchor="middle">model (nn.Module /</text>
+  <text x="103" y="198" font-size="10.5" fill="#475569" text-anchor="middle">name / param count)</text>
+  <text x="103" y="212" font-size="10.5" fill="#475569" text-anchor="middle">+ base config</text>
+
+  <!-- b2 HardwareProfiler -->
+  <g filter="url(#shadow)">
+    <rect x="205" y="138" width="170" height="82" rx="10" fill="#ecfeff" stroke="#06b6d4" stroke-width="1.5"/>
+  </g>
+  <text x="290" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">HardwareProfiler</text>
+  <text x="290" y="184" font-size="10.5" fill="#475569" text-anchor="middle">NVML/psutil snapshot:</text>
+  <text x="290" y="198" font-size="10.5" fill="#475569" text-anchor="middle">VRAM, bandwidth, GPUs</text>
+  <text x="290" y="212" font-size="10.5" fill="#475569" text-anchor="middle">(CPU-only fallback)</text>
+
+  <!-- b3 Models -->
+  <g filter="url(#shadow)">
+    <rect x="392" y="138" width="170" height="82" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  </g>
+  <text x="477" y="161" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">MemoryModel</text>
+  <text x="477" y="177" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">ThroughputModel</text>
+  <text x="477" y="196" font-size="10.5" fill="#475569" text-anchor="middle">analytic peak VRAM +</text>
+  <text x="477" y="210" font-size="10.5" fill="#475569" text-anchor="middle">roofline samples/sec</text>
+
+  <!-- b4 Solver -->
+  <g filter="url(#shadow)">
+    <rect x="579" y="138" width="170" height="82" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.5"/>
+  </g>
+  <text x="664" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">ConfigSolver</text>
+  <text x="664" y="184" font-size="10.5" fill="#475569" text-anchor="middle">memory-safe repair +</text>
+  <text x="664" y="198" font-size="10.5" fill="#475569" text-anchor="middle">throughput tuning +</text>
+  <text x="664" y="212" font-size="10.5" fill="#475569" text-anchor="middle">LR scaling rules</text>
+
+  <!-- b5 Output -->
+  <g filter="url(#shadow)">
+    <rect x="766" y="138" width="176" height="82" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  </g>
+  <text x="854" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">SysPlugConfig</text>
+  <text x="854" y="184" font-size="10.5" fill="#475569" text-anchor="middle">batch, grad-accum,</text>
+  <text x="854" y="198" font-size="10.5" fill="#475569" text-anchor="middle">precision, LR, parallelism</text>
+  <text x="854" y="212" font-size="10.5" fill="#475569" text-anchor="middle">+ predicted metrics</text>
+
+  <!-- pipeline arrows -->
+  <line x1="188" y1="179" x2="203" y2="179" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="375" y1="179" x2="390" y2="179" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="562" y1="179" x2="577" y2="179" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="749" y1="179" x2="764" y2="179" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- runtime monitor row -->
+  <g filter="url(#shadow)">
+    <rect x="205" y="322" width="170" height="70" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+  <text x="290" y="347" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">Training loop</text>
+  <text x="290" y="367" font-size="10.5" fill="#475569" text-anchor="middle">record(step, loss,</text>
+  <text x="290" y="381" font-size="10.5" fill="#475569" text-anchor="middle">grad_norm) each step</text>
+
+  <g filter="url(#shadow)">
+    <rect x="392" y="322" width="170" height="70" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  </g>
+  <text x="477" y="347" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">Monitor</text>
+  <text x="477" y="367" font-size="10.5" fill="#475569" text-anchor="middle">background thread +</text>
+  <text x="477" y="381" font-size="10.5" fill="#475569" text-anchor="middle">StabilitySignal checks</text>
+
+  <line x1="375" y1="357" x2="390" y2="357" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- feedback: divergence -> what_if reconfig, from Monitor up to Solver -->
+  <path d="M 477 322 C 477 280, 664 300, 664 222" fill="none" stroke="#d97706" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrowfb)"/>
+  <text x="700" y="292" font-size="10.5" fill="#b45309">on divergence:</text>
+  <text x="700" y="306" font-size="10.5" fill="#b45309">what_if() reconfig</text>
+
+  <!-- output down to integrations -->
+  <path d="M 854 220 L 854 430" fill="none" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="864" y="330" font-size="10.5" fill="#475569">consumed by</text>
+
+  <!-- integrations band -->
+  <rect x="18" y="438" width="924" height="118" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="34" y="460" font-size="12.5" font-weight="700" fill="#334155">Framework integrations</text>
+  <text x="182" y="460" font-size="11" fill="#64748b">read SysPlugConfig (config-out) and feed metrics back (metrics-in)</text>
+
+  <g font-size="11.5" fill="#0f172a" text-anchor="middle">
+    <rect x="34"  y="474" width="210" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="139" y="503" font-weight="700">HF Trainer</text>
+    <text x="139" y="521" font-size="10" fill="#475569">SysPlugTrainerCallback</text>
+
+    <rect x="262" y="474" width="210" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="367" y="503" font-weight="700">DeepSpeed</text>
+    <text x="367" y="521" font-size="10" fill="#475569">patch_deepspeed_config</text>
+
+    <rect x="490" y="474" width="210" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="595" y="503" font-weight="700">Raw PyTorch</text>
+    <text x="595" y="521" font-size="10" fill="#475569">SysPlugContext</text>
+
+    <rect x="718" y="474" width="210" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+    <text x="823" y="503" font-weight="700">RLHF / PPO</text>
+    <text x="823" y="521" font-size="10" fill="#475569">RLHFAdvisor, PPOConfigHelper</text>
+  </g>
+</svg>
