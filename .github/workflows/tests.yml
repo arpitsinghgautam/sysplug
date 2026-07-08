@@ -23,11 +23,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install dependencies
+      - name: Install tools
+        # Hermetic: the linters check the source tree directly and do not need
+        # the package (or torch) installed. Not installing sysplug also avoids
+        # mypy's "source file found twice" error from editable installs.
         run: |
           python -m pip install --upgrade pip
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev,hf]"
+          pip install ruff==0.15.8 mypy==1.19.1 types-psutil
       - name: Ruff lint
         run: ruff check sysplug tests examples paper frontend
       - name: Ruff format check
