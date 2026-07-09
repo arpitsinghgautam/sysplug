@@ -143,10 +143,18 @@ $M_\text{opt} = 3 \cdot N \cdot 4$ bytes (first moment $m$, second moment $v$,
 and FP32 master weights).
 
 \textbf{Activation memory:}
-$M_\text{act} = L \cdot B \cdot S \cdot H \cdot 34 \cdot b_\pi$
-where $L$ is the number of layers, $B$ batch size, $S$ sequence length,
-$H$ hidden dimension, and the factor 34 accounts for all intermediate tensors
-in a standard transformer block.
+$M_\text{act} = L \cdot \left( C_\ell \cdot B \cdot S \cdot H
++ \mathbb{1}[\text{eager}] \cdot C_a \cdot n_h \cdot B \cdot S^2 \right) \cdot b_\pi$
+where $L$ is the number of layers, $B$ batch size, $S$ sequence length, $H$
+hidden dimension, and $n_h$ the number of query heads. The first (linear) term
+covers projections, FFN, residuals and norms~\cite{korthikanti2022reducing};
+the second is the materialised $B{\times}n_h{\times}S{\times}S$ attention-scores
+matrix, present only for eager attention. FlashAttention / SDPA compute
+attention in tiles and never materialise it~\cite{dao2022flashattention}, so the
+$O(S^2)$ term is dropped ($\mathbb{1}[\text{eager}]=0$) --- this is the dominant
+term at long sequence and large batch. $C_\ell$ is calibrated against measured
+training peaks; $C_a \approx 2$ (the scores matrix plus its softmax/dropout
+buffer).
 
 \textbf{Gradient checkpointing:} reduces $M_\text{act}$ by $\sqrt{L}/L$
 by recomputing activations at checkpointed boundaries.

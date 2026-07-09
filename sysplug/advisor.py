@@ -67,7 +67,13 @@ class Advisor:
 
     Args:
         model: A ``torch.nn.Module`` instance, or a model-name string like
-            ``"llama-3-8b"``, or an integer parameter count.
+            ``"llama-3-8b"``, or an integer parameter count. When a module with
+            a HuggingFace ``config`` is given, the real architecture (hidden
+            size, layers, query/KV heads, attention implementation) is read from
+            it and used for prediction; only the compact
+            :class:`~sysplug.memory_model.ModelArch` is retained. Memory
+            recommendations are conservative: a config that is reported as
+            fitting is checked against an OOM-safe upper bound.
         hardware: ``"auto"`` to detect GPUs automatically, or a
             :class:`~sysplug.hardware.HardwareSnapshot` to use directly.
         training_type: Training regime:

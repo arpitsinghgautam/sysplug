@@ -158,7 +158,7 @@ python -m sysplug version
 
 SysPlug combines three components:
 
-1. **MemoryModel**: static analytic model estimating peak GPU VRAM from parameter count, batch size, precision, optimizer, and parallelism strategy (ZeRO-0 through ZeRO-3, FSDP).
+1. **MemoryModel**: analytic peak-VRAM estimator that **introspects the real model** (reads hidden size, layers, query/KV heads and the attention implementation from a HuggingFace `config` instead of guessing from the parameter count), models **full O(S²) attention-score memory** for eager attention and drops it for FlashAttention/SDPA, covers optimizer states and ZeRO-0..3 / FSDP sharding, and reports a **conservative upper bound** the solver treats as OOM-safe ("if it says it fits, it fits").
 
 2. **ThroughputModel**: roofline-based throughput predictor using GPU hardware specs (peak FLOP/s, memory bandwidth), where per-step compute is 6×params×seq×batch, weight traffic is read once per step, and activation traffic scales with batch (so throughput ramps then plateaus).
 

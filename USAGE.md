@@ -510,15 +510,26 @@ est = mm.predict(
     sequence_length=2048,
 )
 
-print(f"Peak memory:  {est.peak_memory_mb:.0f} MiB")
-print(f"90% CI:       [{est.lower_mb:.0f}, {est.upper_mb:.0f}] MiB")
+print(f"Central:      {est.peak_memory_mb:.0f} MiB")
+print(f"Band:         [{est.lower_mb:.0f}, {est.upper_mb:.0f}] MiB (upper = OOM-safe)")
 print(f"Parameters:   {est.breakdown.parameters_mb:.0f} MiB")
 print(f"Gradients:    {est.breakdown.gradients_mb:.0f} MiB")
 print(f"Opt. states:  {est.breakdown.optimizer_states_mb:.0f} MiB")
 print(f"Activations:  {est.breakdown.activations_mb:.0f} MiB")
 print(f"Overhead:     {est.breakdown.framework_overhead_mb:.0f} MiB")
 
-# Named models shortcut
+# est.upper_mb is a conservative bound: if it fits your VRAM, the run fits.
+# `SysPlugConfig.predicted_peak_memory_upper_mb` exposes the same for the solver.
+
+# Attention-aware: pass the real architecture for an accurate estimate. The
+# Advisor does this automatically when you give it a real nn.Module; here you
+# can pass it explicitly. FlashAttention/SDPA drop the O(S^2) scores term.
+est_flash = mm.predict(
+    7_000_000_000, batch_size=4, sequence_length=8192,
+    hidden_dim=4096, num_layers=32, num_heads=32, attn_impl="flash",
+)
+
+# Named models shortcut (uses the per-family arch table, incl. GQA)
 est = mm.predict_from_name("llama-3-8b", batch_size=4, precision="bf16")
 
 # ZeRO-3 with 8 GPUs

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Real model-architecture introspection.** `resolve_model_arch()` and a
+  `ModelArch` type read the true hidden size, layers, query/KV heads and
+  attention implementation from a HuggingFace `config` (with a per-family arch
+  table for name inputs and param-count inference as a fallback). The `Advisor`
+  now threads this through to the memory and throughput models instead of
+  guessing the architecture from the parameter count.
+- **Conservative, OOM-safe memory bound.** `MemoryModel` now reports an
+  asymmetric confidence band; the solver checks the **upper** bound for
+  feasibility, so a recommended config that "fits" genuinely fits.
+  `SysPlugConfig` gains `predicted_peak_memory_upper_mb`.
+- **Attention-aware activation memory.** Models the full `O(S²)` attention-score
+  memory for eager attention and drops it for FlashAttention/SDPA/memory-
+  efficient kernels — the dominant term at long sequence / large batch.
+- `paper/experiments/calibrate_memory.py` (CPU calibration of the memory
+  coefficients against the committed measurements).
+
+### Changed
+- Memory activation coefficient calibrated against measured training peaks
+  (linear term ~54 vs the theoretical ~34, which undercounts autograd
+  bookkeeping and attention-kernel workspace); central memory MAPE ~10% on the
+  committed GPT-2 data. Coefficients are provisional pending a GPU re-run.
+
 ### Fixed
 - **Throughput model was batch-invariant.** The roofline used
   `bytes_traffic = 2·P·B`, which cancelled batch size out of arithmetic
