@@ -15,6 +15,8 @@
 
 SysPlug analyses your GPU hardware, estimates memory and throughput requirements, and recommends the optimal batch size, learning rate, precision, gradient accumulation, and parallelism strategy for your training run, before you waste hours hitting OOM or under-utilizing hardware.
 
+Unlike a param-count guesser, SysPlug **reads the real model architecture** (hidden size, layers, attention heads including GQA, and the attention implementation) straight from a HuggingFace `config`, models the `O(S²)` attention-score memory that dominates long-context training, and reports a **conservative, OOM-safe** bound: if it says a config fits, it fits.
+
 ## Quick Start
 
 ```bash
@@ -165,6 +167,16 @@ SysPlug combines three components:
 3. **ConfigSolver**: constrained solver that adjusts the configuration (batch size, gradient accumulation, precision, LR) subject to GPU memory constraints and applies literature-backed LR scaling rules (Goyal et al. 2017, Krizhevsky 2014).
 
 The `Monitor` runs these checks in a background thread during training, detecting loss divergence and OOM risk without blocking the training loop.
+
+## How accurate is it?
+
+Validated against real training on an NVIDIA RTX PRO 5000 (24 GB):
+
+- **Memory: 10.1% mean error**, and the conservative upper bound covered the true out-of-memory threshold (allocator reserved peak) for **100%** of tested configurations — GPT-2 125M–775M and a grouped-query-attention LLaMA model.
+- **Throughput: 7.3% mean error** after a short one-time calibration.
+- The `O(S²)` eager-attention memory term was validated independently across sequence lengths 256/512/1024.
+
+Reproduce it yourself with `python -m paper.experiments.measure_gpu`. **Scope:** validation so far is single-GPU on GPT-2 and LLaMA-family models; broader coverage (more architectures, longer contexts, multi-GPU) is in progress. Full method and numbers are in [the paper](paper/paper.tex).
 
 ## Contributing
 
