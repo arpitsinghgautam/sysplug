@@ -46,6 +46,7 @@ class PredictRequest(BaseModel):
     optimizer: str = Field("adamw", max_length=32)
     parallelism: str = Field("none", max_length=16)
     use_gradient_checkpointing: bool = False
+    attn_impl: str = Field("eager", max_length=24)  # eager|sdpa|flash_attention_2
     gpu_count: int = Field(1, ge=1, le=1024)
     gpu_memory_mb: float = Field(40_960.0, gt=0, le=2_000_000)
 
@@ -108,23 +109,24 @@ def get_hardware() -> dict:
 @app.post("/predict")
 def predict(req: PredictRequest) -> dict:
     """Run analytic memory + throughput prediction and return full breakdown."""
-    from sysplug.memory_model import MemoryModel, _params_from_name
+    from sysplug.memory_model import MemoryModel, resolve_model_arch
     from sysplug.throughput_model import ThroughputModel
     from sysplug.utils.scaling_rules import recommended_lr_rule
 
-    # ── Resolve parameter count ──────────────────────────────────────────
+    # ── Resolve architecture (real dims + GQA from the name table) ────────
     if req.param_count > 0:
-        params = req.param_count
-        model_label = f"{params / 1e9:.2f}B params"
+        arch = resolve_model_arch(req.param_count)
+        model_label = f"{req.param_count / 1e9:.2f}B params"
     else:
         try:
-            params = _params_from_name(req.model_name)
+            arch = resolve_model_arch(req.model_name)
             model_label = req.model_name
         except ValueError:
-            params = 125_000_000
+            arch = resolve_model_arch(125_000_000)
             model_label = "gpt2 (fallback)"
+    params = arch.param_count
 
-    # ── Memory prediction ────────────────────────────────────────────────
+    # ── Memory prediction (architecture- and attention-aware) ─────────────
     mm = MemoryModel(gpu_count=req.gpu_count)
     mem_est = mm.predict(
         param_count=params,
@@ -134,6 +136,8 @@ def predict(req: PredictRequest) -> dict:
         parallelism=req.parallelism,
         use_gradient_checkpointing=req.use_gradient_checkpointing,
         sequence_length=req.sequence_length,
+        arch=arch,
+        attn_impl=req.attn_impl,
     )
 
     # ── Throughput prediction ────────────────────────────────────────────
@@ -145,13 +149,16 @@ def predict(req: PredictRequest) -> dict:
         model_size_params=params,
         precision=req.precision,
         sequence_length=req.sequence_length,
+        hidden_size=arch.hidden_size,
+        num_layers=arch.num_layers,
     )
 
     # ── Budget check ─────────────────────────────────────────────────────
+    # "fits" uses the conservative upper bound (OOM-safe), matching the solver.
     budget_mb = req.gpu_memory_mb * 0.85
     mem_pct = (mem_est.peak_memory_mb / req.gpu_memory_mb) * 100
-    fits = mem_est.peak_memory_mb <= budget_mb
-    oom_pct = (mem_est.peak_memory_mb / budget_mb) * 100  # % of *budget*
+    fits = mem_est.upper_mb <= budget_mb
+    oom_pct = (mem_est.upper_mb / budget_mb) * 100  # % of *budget* (conservative)
 
     # ── Warnings ─────────────────────────────────────────────────────────
     warns: list[str] = []
@@ -323,18 +330,14 @@ def predict_inference(req: InferenceRequest) -> dict:
 
 
 def _estimate_arch(param_count: int) -> tuple[int, int]:
-    """Estimate (hidden_size, num_layers) from parameter count."""
-    if param_count < 200_000_000:
-        return 768, 12
-    if param_count < 1_000_000_000:
-        return 1024, 24
-    if param_count < 4_000_000_000:
-        return 2048, 24
-    if param_count < 10_000_000_000:
-        return 4096, 32
-    if param_count < 20_000_000_000:
-        return 5120, 40
-    return 8192, 80
+    """Estimate (hidden_size, num_layers) from parameter count.
+
+    Delegates to the shared inference used by the memory/throughput models.
+    """
+    from sysplug.memory_model import resolve_model_arch
+
+    arch = resolve_model_arch(param_count)
+    return arch.hidden_size, arch.num_layers
 
 
 def _detect_gpu_name() -> str:
