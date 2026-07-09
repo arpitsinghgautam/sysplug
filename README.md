@@ -1,13 +1,14 @@
 # SysPlug
 
+[![PyPI](https://img.shields.io/pypi/v/sysplug.svg)](https://pypi.org/project/sysplug/)
 [![CI](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml/badge.svg)](https://github.com/arpitsinghgautam/sysplug/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
 
-<!-- The PyPI and Codecov badges are intentionally omitted until the package is
-     published to PyPI and the repository is connected to codecov.io. -->
+<!-- The Codecov badge is intentionally omitted until the repository is
+     connected to codecov.io. -->
 
 ![SysPlug architecture](https://raw.githubusercontent.com/arpitsinghgautam/sysplug/main/docs/architecture.svg)
 
