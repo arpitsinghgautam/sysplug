@@ -29,8 +29,8 @@
     <rect x="18" y="138" width="170" height="82" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
   </g>
   <text x="103" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">Inputs</text>
-  <text x="103" y="184" font-size="10.5" fill="#475569" text-anchor="middle">model (nn.Module /</text>
-  <text x="103" y="198" font-size="10.5" fill="#475569" text-anchor="middle">name / param count)</text>
+  <text x="103" y="184" font-size="10.5" fill="#475569" text-anchor="middle">model: Module / name / count</text>
+  <text x="103" y="198" font-size="10.5" fill="#475569" text-anchor="middle">&#8594; ModelArch (GQA, attn impl)</text>
   <text x="103" y="212" font-size="10.5" fill="#475569" text-anchor="middle">+ base config</text>
 
   <!-- b2 HardwareProfiler -->
@@ -48,15 +48,15 @@
   </g>
   <text x="477" y="161" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">MemoryModel</text>
   <text x="477" y="177" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">ThroughputModel</text>
-  <text x="477" y="196" font-size="10.5" fill="#475569" text-anchor="middle">analytic peak VRAM +</text>
-  <text x="477" y="210" font-size="10.5" fill="#475569" text-anchor="middle">roofline samples/sec</text>
+  <text x="477" y="196" font-size="10.5" fill="#475569" text-anchor="middle">arch-aware VRAM, O(S&#178;) attn,</text>
+  <text x="477" y="210" font-size="10.5" fill="#475569" text-anchor="middle">OOM-safe band + roofline</text>
 
   <!-- b4 Solver -->
   <g filter="url(#shadow)">
     <rect x="579" y="138" width="170" height="82" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.5"/>
   </g>
   <text x="664" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">ConfigSolver</text>
-  <text x="664" y="184" font-size="10.5" fill="#475569" text-anchor="middle">memory-safe repair +</text>
+  <text x="664" y="184" font-size="10.5" fill="#475569" text-anchor="middle">repair on upper bound +</text>
   <text x="664" y="198" font-size="10.5" fill="#475569" text-anchor="middle">throughput tuning +</text>
   <text x="664" y="212" font-size="10.5" fill="#475569" text-anchor="middle">LR scaling rules</text>
 
@@ -67,7 +67,7 @@
   <text x="854" y="163" font-size="13.5" font-weight="700" fill="#0f172a" text-anchor="middle">SysPlugConfig</text>
   <text x="854" y="184" font-size="10.5" fill="#475569" text-anchor="middle">batch, grad-accum,</text>
   <text x="854" y="198" font-size="10.5" fill="#475569" text-anchor="middle">precision, LR, parallelism</text>
-  <text x="854" y="212" font-size="10.5" fill="#475569" text-anchor="middle">+ predicted metrics</text>
+  <text x="854" y="212" font-size="10.5" fill="#475569" text-anchor="middle">+ peak VRAM: central &amp; upper</text>
 
   <!-- pipeline arrows -->
   <line x1="188" y1="179" x2="203" y2="179" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
