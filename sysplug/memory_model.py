@@ -21,6 +21,7 @@ References:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -100,6 +101,44 @@ _MODEL_PARAM_BILLIONS: dict[str, float] = {
     "starcoder2-15b": 15.0,
 }
 
+# ---------------------------------------------------------------------------
+# Per-family architecture table: (hidden, layers, query_heads, kv_heads).
+# Real configs for common families, used when the caller passes a model *name*
+# string. Any model passed as an nn.Module is introspected directly from its
+# (HuggingFace) config — see resolve_model_arch — so this table only matters
+# for name-only inputs. GQA/MQA models have kv_heads < query_heads.
+# ---------------------------------------------------------------------------
+
+_MODEL_ARCH_TABLE: dict[str, tuple[int, int, int, int]] = {
+    "gpt2-medium": (1024, 24, 16, 16),
+    "gpt2-large": (1280, 36, 20, 20),
+    "gpt2-xl": (1600, 48, 25, 25),
+    "gpt2": (768, 12, 12, 12),
+    "llama-2-7b": (4096, 32, 32, 32),
+    "llama-2-13b": (5120, 40, 40, 40),
+    "llama-2-70b": (8192, 80, 64, 8),
+    "llama-3-8b": (4096, 32, 32, 8),
+    "llama-3-70b": (8192, 80, 64, 8),
+    "mistral-7b": (4096, 32, 32, 8),
+    "codellama-7b": (4096, 32, 32, 32),
+    "codellama-13b": (5120, 40, 40, 40),
+    "qwen-7b": (4096, 32, 32, 32),
+    "qwen-14b": (5120, 40, 40, 40),
+    "gemma-2b": (2048, 18, 8, 1),
+    "gemma-7b": (3072, 28, 16, 16),
+    "phi-2": (2560, 32, 32, 32),
+    "opt-1.3b": (2048, 24, 32, 32),
+    "opt-6.7b": (4096, 32, 32, 32),
+    "bert-base": (768, 12, 12, 12),
+    "bert-large": (1024, 24, 16, 16),
+    "t5-base": (768, 12, 12, 12),
+    "t5-large": (1024, 24, 16, 16),
+}
+
+# Attention implementations that do NOT materialise the full B·S·S scores
+# matrix (memory is O(S) rather than O(S^2)).
+_SUBQUADRATIC_ATTN = ("flash", "sdpa", "mem_eff", "memory_efficient", "xformers")
+
 
 def _params_from_name(model_name: str) -> int:
     """Approximate parameter count from a model name string.
@@ -141,6 +180,152 @@ def _infer_hidden_layers(param_count: int) -> tuple[int, int]:
     hidden = max(128, int(round(2.1 * (param_count ** (1.0 / 3.0)) / 128.0)) * 128)
     layers = max(1, int(round(param_count / (12.0 * hidden * hidden))))
     return hidden, layers
+
+
+# ---------------------------------------------------------------------------
+# Architecture resolution (introspect real models instead of guessing)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ModelArch:
+    """Resolved transformer architecture used by the memory/throughput models.
+
+    Produced by :func:`resolve_model_arch` from an ``nn.Module`` (introspecting
+    a HuggingFace ``config`` when present), a model-name string, or a raw
+    parameter count. ``source`` records how it was obtained (``"config"`` |
+    ``"name_table"`` | ``"param_inference"``).
+
+    Attributes:
+        hidden_size: Model hidden dimension.
+        num_layers: Number of transformer layers.
+        num_heads: Number of query attention heads.
+        num_kv_heads: Number of key/value heads (< num_heads for GQA/MQA).
+        attn_impl: Attention implementation string (e.g. ``"eager"``, ``"sdpa"``,
+            ``"flash_attention_2"``).
+        max_seq_len: Maximum supported sequence length, if known.
+        param_count: Total parameter count.
+        source: How the architecture was resolved.
+    """
+
+    hidden_size: int
+    num_layers: int
+    num_heads: int
+    num_kv_heads: int
+    attn_impl: str = "eager"
+    max_seq_len: int | None = None
+    param_count: int = 0
+    source: str = "param_inference"
+
+    def is_subquadratic_attn(self) -> bool:
+        """True if the attention impl avoids the full ``B·S·S`` scores matrix.
+
+        FlashAttention / SDPA / memory-efficient kernels compute attention in
+        tiles and never materialise the ``O(S^2)`` scores, so their activation
+        memory scales as ``O(S)`` rather than ``O(S^2)``.
+        """
+        impl = (self.attn_impl or "eager").lower()
+        return any(key in impl for key in _SUBQUADRATIC_ATTN)
+
+
+def _first_attr(obj: Any, names: tuple[str, ...]) -> Any:
+    """Return the first non-None attribute among ``names`` (guarded getattr)."""
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _safe_param_count(model: Any) -> int:
+    """Sum ``model.parameters()``; fall back to 125M with a warning."""
+    try:
+        return int(sum(p.numel() for p in model.parameters()))
+    except Exception:
+        warnings.warn(
+            f"Could not determine parameter count from model type {type(model)}. "
+            "Defaulting to 125M parameters.",
+            stacklevel=2,
+        )
+        return 125_000_000
+
+
+def _arch_from_name(name: str) -> tuple[int, int, int, int, int]:
+    """Return ``(param_count, hidden, layers, heads, kv_heads)`` for a name.
+
+    Uses :data:`_MODEL_ARCH_TABLE` (longest match first, so ``gpt2-medium`` does
+    not match ``gpt2``) when the family is known; otherwise infers dims from the
+    name's parameter count. Raises ``ValueError`` for a genuinely unknown name
+    (same contract as :func:`_params_from_name`).
+    """
+    key = name.lower().strip()
+    params = _params_from_name(name)
+    for name_key in sorted(_MODEL_ARCH_TABLE, key=len, reverse=True):
+        if name_key in key or key in name_key:
+            h, layers, heads, kv = _MODEL_ARCH_TABLE[name_key]
+            return params, h, layers, heads, kv
+    h, layers = _infer_hidden_layers(params)
+    heads = max(1, h // 128)
+    return params, h, layers, heads, heads
+
+
+def resolve_model_arch(model: Any) -> ModelArch:
+    """Resolve a :class:`ModelArch` from a model object, name, or param count.
+
+    - ``int`` -> treated as a parameter count; dims inferred.
+    - ``str`` -> looked up in the per-family arch table (or inferred from the
+      name's parameter count). Raises ``ValueError`` for an unknown name.
+    - ``nn.Module`` with a HuggingFace ``.config`` -> dims read directly from
+      the config (hidden size, layers, query/KV heads, attention impl).
+    - other ``nn.Module`` -> parameter count summed; dims inferred.
+
+    Never raises for a module or int input.
+
+    Examples:
+        >>> arch = resolve_model_arch("llama-3-8b")
+        >>> (arch.hidden_size, arch.num_layers, arch.num_kv_heads)
+        (4096, 32, 8)
+    """
+    if isinstance(model, bool):  # bool is an int subclass; treat as unknown
+        model = 125_000_000
+    if isinstance(model, int):
+        hidden, layers = _infer_hidden_layers(model)
+        heads = max(1, hidden // 128)
+        return ModelArch(
+            hidden, layers, heads, heads, param_count=int(model), source="param_inference"
+        )
+    if isinstance(model, str):
+        params, hidden, layers, heads, kv = _arch_from_name(model)
+        return ModelArch(hidden, layers, heads, kv, param_count=params, source="name_table")
+
+    # Assume an nn.Module-like object.
+    param_count = _safe_param_count(model)
+    cfg = getattr(model, "config", None)
+    if cfg is not None:
+        hidden = _first_attr(cfg, ("hidden_size", "n_embd", "d_model", "hidden_dim"))
+        layers = _first_attr(cfg, ("num_hidden_layers", "n_layer", "num_layers", "n_layers"))
+        heads = _first_attr(cfg, ("num_attention_heads", "n_head", "num_heads"))
+        kv = _first_attr(cfg, ("num_key_value_heads", "num_kv_heads"))
+        max_seq = _first_attr(cfg, ("max_position_embeddings", "n_positions", "max_seq_len"))
+        attn = _first_attr(cfg, ("_attn_implementation", "attn_implementation"))
+        if hidden and layers:
+            heads = int(heads) if heads else max(1, int(hidden) // 128)
+            return ModelArch(
+                hidden_size=int(hidden),
+                num_layers=int(layers),
+                num_heads=heads,
+                num_kv_heads=int(kv) if kv else heads,
+                attn_impl=str(attn) if attn else "eager",
+                max_seq_len=int(max_seq) if max_seq else None,
+                param_count=param_count,
+                source="config",
+            )
+
+    hidden, layers = _infer_hidden_layers(param_count)
+    heads = max(1, hidden // 128)
+    return ModelArch(
+        hidden, layers, heads, heads, param_count=param_count, source="param_inference"
+    )
 
 
 # ---------------------------------------------------------------------------
