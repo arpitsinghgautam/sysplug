@@ -139,10 +139,14 @@ _MODEL_ARCH_TABLE: dict[str, tuple[int, int, int, int]] = {
 # matrix (memory is O(S) rather than O(S^2)).
 _SUBQUADRATIC_ATTN = ("flash", "sdpa", "mem_eff", "memory_efficient", "xformers")
 
-# Activation-memory coefficients (per layer). Provisional physics-based values,
-# calibrated against measured training peaks (see paper/experiments/measure_gpu.py).
-_ACT_LINEAR_COEF = 34.0  # linear activations: QKV proj, FFN, residuals, norms (~34·B·S·H)
-_ATTN_SCORES_COEF = 2.0  # eager attention: B·heads·S·S scores + softmax/dropout buffer
+# Activation-memory coefficients (per layer). See paper/experiments/calibrate_memory.py.
+# The linear coefficient is calibrated against measured training peaks (~54); the
+# theoretical stored-activation count is ~34 (Korthikanti et al. 2022), but the real
+# peak also holds autograd bookkeeping and attention-kernel workspace.
+_ACT_LINEAR_COEF = 54.0  # linear activations: QKV proj, FFN, residuals, norms (~C·B·S·H)
+# eager attention: B·heads·S·S scores + softmax/dropout buffer. Physics-based;
+# validated against measured data requires an eager (non-SDPA) run (deferred).
+_ATTN_SCORES_COEF = 2.0
 
 
 def _is_subquadratic_attn(attn_impl: str | None) -> bool:
@@ -442,7 +446,7 @@ class MemoryModel:
     # solver uses upper_mb for OOM-safety. Provisional; re-derived from measured
     # residuals during calibration (see paper/experiments/measure_gpu.py).
     _CI_LOWER_FRAC = 0.10  # lower = peak * (1 - 0.10)
-    _CI_UPPER_FRAC = 0.50  # upper = peak * (1 + 0.50)
+    _CI_UPPER_FRAC = 0.40  # upper = peak * (1 + 0.40); covers measured residuals
 
     def __init__(
         self,

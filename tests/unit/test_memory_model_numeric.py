@@ -11,7 +11,14 @@ import math
 
 import pytest
 
-from sysplug.memory_model import MemoryBreakdown, MemoryModel, PrecisionMode, _params_from_name
+from sysplug.memory_model import (
+    _ACT_LINEAR_COEF,
+    _ATTN_SCORES_COEF,
+    MemoryBreakdown,
+    MemoryModel,
+    PrecisionMode,
+    _params_from_name,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -224,8 +231,10 @@ class TestActivationMemoryExact:
         materialized: bool = True,
         use_gc: bool = False,
     ) -> float:
-        linear = 34 * batch_size * seq_len * hidden_dim
-        scores = 2.0 * num_heads * batch_size * seq_len * seq_len if materialized else 0.0
+        linear = _ACT_LINEAR_COEF * batch_size * seq_len * hidden_dim
+        scores = (
+            _ATTN_SCORES_COEF * num_heads * batch_size * seq_len * seq_len if materialized else 0.0
+        )
         total = (linear + scores) * num_layers * bytes_elem
         if use_gc:
             total *= math.sqrt(num_layers) / num_layers
