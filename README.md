@@ -9,7 +9,7 @@
 <!-- The PyPI and Codecov badges are intentionally omitted until the package is
      published to PyPI and the repository is connected to codecov.io. -->
 
-![SysPlug architecture](docs/architecture.svg)
+![SysPlug architecture](https://raw.githubusercontent.com/arpitsinghgautam/sysplug/main/docs/architecture.svg)
 
 **GPU-aware hyperparameter advisor for any deep learning training loop.**
 
@@ -176,7 +176,7 @@ Validated against real training on an NVIDIA RTX PRO 5000 (24 GB):
 - **Throughput: 7.3% mean error** after a short one-time calibration.
 - The `O(S²)` eager-attention memory term was validated independently across sequence lengths 256/512/1024.
 
-Reproduce it yourself with `python -m paper.experiments.measure_gpu`. **Scope:** validation so far is single-GPU on GPT-2 and LLaMA-family models; broader coverage (more architectures, longer contexts, multi-GPU) is in progress. Full method and numbers are in [the paper](paper/paper.tex).
+Reproduce it yourself with `python -m paper.experiments.measure_gpu`. **Scope:** validation so far is single-GPU on GPT-2 and LLaMA-family models; broader coverage (more architectures, longer contexts, multi-GPU) is in progress. Full method and numbers are in [the paper](https://github.com/arpitsinghgautam/sysplug/blob/main/paper/paper.tex).
 
 ## Contributing
 
@@ -205,4 +205,4 @@ If you use SysPlug in research, please cite:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/arpitsinghgautam/sysplug/blob/main/LICENSE) for details.
