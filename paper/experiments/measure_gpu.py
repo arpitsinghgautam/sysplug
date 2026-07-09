@@ -28,14 +28,17 @@ from pathlib import Path
 
 import torch
 
-from sysplug.memory_model import MemoryModel
+from sysplug.memory_model import MemoryModel, resolve_model_arch
 from sysplug.throughput_model import ThroughputModel
 
-# GPT-2 family configs (n_embd, n_layer, n_head) — real architectures.
+# Model configs — real architectures, built random-init (no download).
+# GPT-2 uses n_embd/n_layer/n_head; llama-tiny uses a LlamaConfig with GQA
+# (kv_heads < heads) to exercise HuggingFace-config introspection end-to-end.
 _CONFIGS: dict[str, dict[str, int]] = {
     "gpt2-small": {"n_embd": 768, "n_layer": 12, "n_head": 12},
     "gpt2-medium": {"n_embd": 1024, "n_layer": 24, "n_head": 16},
     "gpt2-large": {"n_embd": 1280, "n_layer": 36, "n_head": 20},
+    "llama-tiny": {"hidden": 1024, "layers": 8, "heads": 16, "kv_heads": 4},
 }
 
 _MiB = 1024.0 * 1024.0
@@ -47,6 +50,8 @@ class Measurement:
     param_count: int
     hidden_size: int
     num_layers: int
+    num_heads: int
+    attn_impl: str
     batch_size: int
     seq_len: int
     precision: str
@@ -61,10 +66,24 @@ class Measurement:
 
 
 def _build_model(cfg_name: str, vocab_size: int = 50257) -> torch.nn.Module:
-    """Build a random-init GPT-2 model of the named size (no download)."""
+    """Build a random-init model of the named size (no download)."""
+    c = _CONFIGS[cfg_name]
+    if cfg_name.startswith("llama"):
+        from transformers import LlamaConfig, LlamaForCausalLM
+
+        config = LlamaConfig(
+            vocab_size=32000,
+            hidden_size=c["hidden"],
+            num_hidden_layers=c["layers"],
+            num_attention_heads=c["heads"],
+            num_key_value_heads=c["kv_heads"],
+            intermediate_size=c["hidden"] * 3,
+            max_position_embeddings=2048,
+        )
+        return LlamaForCausalLM(config)
+
     from transformers import GPT2Config, GPT2LMHeadModel
 
-    c = _CONFIGS[cfg_name]
     config = GPT2Config(
         vocab_size=vocab_size,
         n_positions=2048,
@@ -96,17 +115,19 @@ def _measure_one(
     torch.manual_seed(seed)
     model = _build_model(cfg_name).to(device)
     model.train()
-    param_count = sum(p.numel() for p in model.parameters())
-    c = _CONFIGS[cfg_name]
+    # Introspect the real architecture the same way the library does at runtime.
+    arch = resolve_model_arch(model)
     optim = torch.optim.AdamW(model.parameters(), lr=1e-4)
     dtype = _precision_dtype(precision)
     vocab = model.config.vocab_size
 
     base = Measurement(
         config=cfg_name,
-        param_count=param_count,
-        hidden_size=c["n_embd"],
-        num_layers=c["n_layer"],
+        param_count=arch.param_count,
+        hidden_size=arch.hidden_size,
+        num_layers=arch.num_layers,
+        num_heads=arch.num_heads,
+        attn_impl=arch.attn_impl,
         batch_size=batch_size,
         seq_len=seq_len,
         precision=precision,
@@ -150,7 +171,7 @@ def _measure_one(
         step_time = statistics.median(times)
         samples_per_sec = batch_size / step_time
         # Achieved compute: 6 * P * seq * batch FLOPs per step.
-        flops = 6.0 * param_count * seq_len * batch_size
+        flops = 6.0 * arch.param_count * seq_len * batch_size
         achieved_tflops = (flops / step_time) / 1e12
 
         base.samples_per_sec = samples_per_sec
@@ -235,6 +256,8 @@ def _compare_and_calibrate(results: dict) -> dict:
             sequence_length=seq_len,
             hidden_dim=m["hidden_size"],
             num_layers=m["num_layers"],
+            num_heads=m.get("num_heads"),
+            attn_impl=m.get("attn_impl"),  # match the real attention path
         )
         tp_est = tput.predict(
             effective_batch_size=m["batch_size"],
@@ -253,6 +276,7 @@ def _compare_and_calibrate(results: dict) -> dict:
                 "measured_mib_alloc": m["peak_mib_allocated"],
                 "measured_mib_reserved": m["peak_mib_reserved"],
                 "pred_mib": mem_est.peak_memory_mb,
+                "pred_mib_upper": mem_est.upper_mb,
             }
         )
 
@@ -291,11 +315,17 @@ def _compare_and_calibrate(results: dict) -> dict:
 
     peak_tflops = max((m["achieved_tflops"] for m in ok), default=0.0)
 
+    # Conservative-bound coverage: fraction of points whose upper bound covers
+    # the measured allocated peak (the OOM-safety guarantee).
+    covered = sum(1 for r in rows if r["pred_mib_upper"] >= r["measured_mib_alloc"])
+    coverage_pct = 100.0 * covered / len(rows) if rows else float("nan")
+
     summary = {
         "throughput_mape_uncalibrated_pct": mape("pred_sps_uncal"),
         "throughput_mape_calibrated_pct": mape("pred_sps_cal"),
         "memory_mape_vs_allocated_pct": mem_mape("measured_mib_alloc"),
         "memory_mape_vs_reserved_pct": mem_mape("measured_mib_reserved"),
+        "conservative_coverage_pct": coverage_pct,
         "peak_achieved_tflops": peak_tflops,
         "rows": rows,
     }
@@ -366,6 +396,10 @@ def main() -> None:
     print(
         f"Memory MAPE  vs allocated: {summary['memory_mape_vs_allocated_pct']:.1f}%  "
         f"vs reserved: {summary['memory_mape_vs_reserved_pct']:.1f}%"
+    )
+    print(
+        f"Conservative upper-bound coverage: {summary['conservative_coverage_pct']:.0f}% "
+        "(fraction of points where upper >= measured)"
     )
     print(f"Peak achieved: {summary['peak_achieved_tflops']:.1f} TFLOPS ({args.precision})")
     print(f"\nSaved -> {out}")
