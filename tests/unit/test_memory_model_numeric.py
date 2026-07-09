@@ -219,11 +219,14 @@ class TestActivationMemoryExact:
         seq_len: int,
         hidden_dim: int,
         num_layers: int,
+        num_heads: int,
         bytes_elem: float,
+        materialized: bool = True,
         use_gc: bool = False,
     ) -> float:
-        act_per_layer = batch_size * seq_len * hidden_dim * 34 * bytes_elem
-        total = act_per_layer * num_layers
+        linear = 34 * batch_size * seq_len * hidden_dim
+        scores = 2.0 * num_heads * batch_size * seq_len * seq_len if materialized else 0.0
+        total = (linear + scores) * num_layers * bytes_elem
         if use_gc:
             total *= math.sqrt(num_layers) / num_layers
         return total / 1_048_576
@@ -252,31 +255,52 @@ class TestActivationMemoryExact:
         ratio = est2.breakdown.activations_mb / est1.breakdown.activations_mb
         assert math.isclose(ratio, 2.0, rel_tol=1e-6)
 
-    def test_activation_scales_with_seq_len(self) -> None:
-        """Doubling sequence length should double activation memory."""
+    def test_activation_linear_in_seq_len_with_flash(self) -> None:
+        """With Flash/SDPA (no materialised S² scores), activations are linear in seq."""
         model = MemoryModel(gpu_count=1)
-        est1 = model.predict(
-            GPT2_PARAMS,
+        common = dict(
+            param_count=GPT2_PARAMS,
             batch_size=2,
             precision="bf16",
             optimizer="sgd",
             parallelism="none",
-            sequence_length=256,
             hidden_dim=64,
             num_layers=2,
+            attn_impl="flash",
         )
-        est2 = model.predict(
-            GPT2_PARAMS,
-            batch_size=2,
-            precision="bf16",
-            optimizer="sgd",
-            parallelism="none",
-            sequence_length=512,
-            hidden_dim=64,
-            num_layers=2,
-        )
+        est1 = model.predict(sequence_length=256, **common)
+        est2 = model.predict(sequence_length=512, **common)
         ratio = est2.breakdown.activations_mb / est1.breakdown.activations_mb
         assert math.isclose(ratio, 2.0, rel_tol=1e-6)
+
+    def test_activation_superlinear_in_seq_len_eager(self) -> None:
+        """Eager attention adds an O(S²) scores term -> super-linear in seq len."""
+        model = MemoryModel(gpu_count=1)
+        common = dict(
+            param_count=GPT2_PARAMS,
+            batch_size=2,
+            precision="bf16",
+            optimizer="sgd",
+            parallelism="none",
+            hidden_dim=64,
+            num_layers=2,
+            num_heads=4,
+            attn_impl="eager",
+        )
+        est1 = model.predict(sequence_length=256, **common)
+        est2 = model.predict(sequence_length=512, **common)
+        ratio = est2.breakdown.activations_mb / est1.breakdown.activations_mb
+        assert ratio > 2.0  # super-linear because of the S² term
+        assert math.isclose(
+            est1.breakdown.activations_mb,
+            self._expected_act_mb(2, 256, 64, 2, 4, 2.0),
+            rel_tol=1e-6,
+        )
+        assert math.isclose(
+            est2.breakdown.activations_mb,
+            self._expected_act_mb(2, 512, 64, 2, 4, 2.0),
+            rel_tol=1e-6,
+        )
 
     def test_gradient_checkpointing_reduces_activations(self) -> None:
         """GC with 4 layers reduces activations by sqrt(4)/4 = 0.5."""
@@ -305,11 +329,12 @@ class TestActivationMemoryExact:
         assert math.isclose(actual_ratio, expected_ratio, rel_tol=1e-6)
 
     def test_explicit_hidden_dim_and_layers(self) -> None:
-        """When hidden_dim and num_layers are given explicitly, formula is exact."""
+        """When arch is given explicitly, the activation formula is exact (eager)."""
         batch_size = 4
         seq_len = 512
         hidden_dim = 256
         num_layers = 6
+        num_heads = 8
         bytes_elem = 2.0  # bf16
 
         model = MemoryModel(gpu_count=1)
@@ -322,8 +347,12 @@ class TestActivationMemoryExact:
             sequence_length=seq_len,
             hidden_dim=hidden_dim,
             num_layers=num_layers,
+            num_heads=num_heads,
+            attn_impl="eager",
         )
-        expected = self._expected_act_mb(batch_size, seq_len, hidden_dim, num_layers, bytes_elem)
+        expected = self._expected_act_mb(
+            batch_size, seq_len, hidden_dim, num_layers, num_heads, bytes_elem
+        )
         assert math.isclose(est.breakdown.activations_mb, expected, rel_tol=1e-6)
 
 

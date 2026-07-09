@@ -139,6 +139,17 @@ _MODEL_ARCH_TABLE: dict[str, tuple[int, int, int, int]] = {
 # matrix (memory is O(S) rather than O(S^2)).
 _SUBQUADRATIC_ATTN = ("flash", "sdpa", "mem_eff", "memory_efficient", "xformers")
 
+# Activation-memory coefficients (per layer). Provisional physics-based values,
+# calibrated against measured training peaks (see paper/experiments/measure_gpu.py).
+_ACT_LINEAR_COEF = 34.0  # linear activations: QKV proj, FFN, residuals, norms (~34·B·S·H)
+_ATTN_SCORES_COEF = 2.0  # eager attention: B·heads·S·S scores + softmax/dropout buffer
+
+
+def _is_subquadratic_attn(attn_impl: str | None) -> bool:
+    """True if the attention impl avoids the ``O(S^2)`` scores matrix."""
+    impl = (attn_impl or "eager").lower()
+    return any(key in impl for key in _SUBQUADRATIC_ATTN)
+
 
 def _params_from_name(model_name: str) -> int:
     """Approximate parameter count from a model name string.
@@ -224,8 +235,7 @@ class ModelArch:
         tiles and never materialise the ``O(S^2)`` scores, so their activation
         memory scales as ``O(S)`` rather than ``O(S^2)``.
         """
-        impl = (self.attn_impl or "eager").lower()
-        return any(key in impl for key in _SUBQUADRATIC_ATTN)
+        return _is_subquadratic_attn(self.attn_impl)
 
 
 def _first_attr(obj: Any, names: tuple[str, ...]) -> Any:
@@ -534,40 +544,52 @@ class MemoryModel:
         sequence_length: int,
         hidden_dim: int,
         num_layers: int,
+        num_heads: int,
+        attn_scores_materialized: bool,
         use_gradient_checkpointing: bool,
         precision: PrecisionMode,
     ) -> float:
-        """Estimate activation memory in MiB.
+        """Estimate activation memory in MiB (attention-aware).
 
-        Uses the standard transformer activation formula:
-        bytes ≈ layers × batch × seq_len × hidden × 34  (for standard attn)
-        where the factor 34 accounts for all intermediate tensors in a
-        transformer block (QKV, attention scores, FFN, etc.).
+        Two per-layer terms:
 
-        Gradient checkpointing reduces activations by sqrt(num_layers) by
-        only storing activations at checkpointed layer boundaries.
+        * **Linear**: QKV projections, FFN, residuals, LayerNorms
+          ``≈ 34 · B · S · H`` (Korthikanti et al. 2022).
+        * **Attention scores** (eager/full attention only): the materialised
+          ``B · heads · S · S`` scores matrix plus its softmax/dropout buffer,
+          ``≈ _ATTN_SCORES_COEF · heads · B · S²``. This ``O(S²)`` term
+          dominates activation memory at long sequence / large batch.
+          FlashAttention / SDPA / memory-efficient kernels never materialise it
+          (``attn_scores_materialized=False``), so the term is dropped.
+
+        Gradient checkpointing recomputes activations, keeping only ``√L``
+        checkpoints; the ``√L/L`` reduction applies to the whole per-layer term
+        (the attention scores are the primary recompute target).
 
         Args:
             batch_size: Per-device micro-batch size.
             sequence_length: Token sequence length.
             hidden_dim: Model hidden dimension.
             num_layers: Number of transformer layers.
-            use_gradient_checkpointing: If ``True``, apply the sqrt reduction.
+            num_heads: Number of query attention heads (drives the scores term).
+            attn_scores_materialized: Whether the full ``S²`` scores are held in
+                memory (True for eager, False for Flash/SDPA/mem-efficient).
+            use_gradient_checkpointing: If ``True``, apply the ``√L/L`` reduction.
             precision: Training precision (determines bytes per element).
 
         Returns:
             Estimated activation memory in MiB.
         """
         bytes_elem = _BYTES_PER_PARAM[precision]
-        # Each layer stores activations for: input, attn projections,
-        # attn scores, FFN input/output, residuals ≈ 34 * hidden elements
-        act_per_layer = batch_size * sequence_length * hidden_dim * 34 * bytes_elem
-        total_act_bytes = act_per_layer * num_layers
+        linear = _ACT_LINEAR_COEF * batch_size * sequence_length * hidden_dim
+        scores = 0.0
+        if attn_scores_materialized:
+            scores = _ATTN_SCORES_COEF * num_heads * batch_size * sequence_length * sequence_length
+        total_act_bytes = (linear + scores) * num_layers * bytes_elem
 
         if use_gradient_checkpointing:
-            # Checkpointing recomputes activations; only √L checkpoints held
-            checkpoint_factor = math.sqrt(num_layers) / num_layers
-            total_act_bytes *= checkpoint_factor
+            # Checkpointing recomputes activations; only √L checkpoints held.
+            total_act_bytes *= math.sqrt(num_layers) / num_layers
 
         return total_act_bytes / 1024 / 1024
 
@@ -582,6 +604,9 @@ class MemoryModel:
         sequence_length: int = 512,
         hidden_dim: int | None = None,
         num_layers: int | None = None,
+        num_heads: int | None = None,
+        attn_impl: str | None = None,
+        arch: ModelArch | None = None,
     ) -> MemoryEstimate:
         """Predict peak GPU memory for a single training step.
 
@@ -599,6 +624,14 @@ class MemoryModel:
             sequence_length: Token sequence length (for activation estimate).
             hidden_dim: Model hidden dimension; estimated if not provided.
             num_layers: Number of transformer layers; estimated if not given.
+            num_heads: Query attention heads; drives the O(S^2) attention term.
+                Estimated if not given.
+            attn_impl: Attention implementation. When it is "flash"/"sdpa"/
+                memory-efficient the O(S^2) scores term is dropped; defaults to
+                "eager" (conservative — keeps the term).
+            arch: A :class:`ModelArch` to source the above from. Explicit
+                ``hidden_dim``/``num_layers``/``num_heads``/``attn_impl`` kwargs
+                still override the corresponding ``arch`` fields.
 
         Returns:
             A :class:`MemoryEstimate` with a central prediction and CI.
@@ -612,7 +645,17 @@ class MemoryModel:
         prec = PrecisionMode(precision.lower())
         bytes_param = _BYTES_PER_PARAM[prec]
 
+        # Prefer an explicit ModelArch; explicit dim/head/impl kwargs override it.
+        if arch is not None:
+            hidden_dim = hidden_dim or arch.hidden_size
+            num_layers = num_layers or arch.num_layers
+            num_heads = num_heads or arch.num_heads
+            if attn_impl is None:
+                attn_impl = arch.attn_impl
+
         h_dim, n_layers = self._infer_arch(param_count, hidden_dim, num_layers)
+        heads = num_heads if num_heads else max(1, h_dim // 128)
+        scores_materialized = not _is_subquadratic_attn(attn_impl)
 
         # Parameters
         params_mb = param_count * bytes_param / 1024 / 1024
@@ -635,6 +678,8 @@ class MemoryModel:
             sequence_length=sequence_length,
             hidden_dim=h_dim,
             num_layers=n_layers,
+            num_heads=heads,
+            attn_scores_materialized=scores_materialized,
             use_gradient_checkpointing=use_gradient_checkpointing,
             precision=prec,
         )
