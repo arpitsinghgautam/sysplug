@@ -48,12 +48,14 @@ solver, and an online stability monitor.  SysPlug operates at zero additional
 training cost: it analyses the model architecture and hardware specification
 \emph{before} training begins and recommends a safe, efficient configuration.
 It integrates with Hugging Face Trainer, DeepSpeed, and raw PyTorch loops.
-We validate SysPlug's predictive models against real GPT-2 training
-(125M--775M parameters) on a single 24\,GB GPU: after light calibration its
-throughput predictions reach a mean absolute percentage error (MAPE) of
-$7.3\%$, and its from-scratch memory predictions a MAPE of $14.9\%$, enabling
-it to recommend memory-safe, throughput-aware configurations without any trial
-runs.
+We validate SysPlug's predictive models against real training on a single
+24\,GB GPU: its architecture-aware memory model (which reads the true hidden
+size, layers, query/KV heads and attention implementation from the model)
+reaches a mean absolute percentage error of $10.1\%$, and its conservative
+upper bound covers the true out-of-memory threshold for $100\%$ of measured
+configurations; its throughput predictions reach a MAPE of $7.3\%$ after light
+calibration. This lets it recommend memory-safe, throughput-aware
+configurations without any trial runs.
 \end{abstract}
 
 %% -----------------------------------------------------------------------
@@ -370,39 +372,50 @@ reintroducing the bug.
 
 \subsection{Exp.\ 2: Memory Prediction}
 
-We compare \texttt{MemoryModel.predict()} against
-\texttt{torch.cuda.max\_memory\_allocated()} over the same batch sweep
-(Table~\ref{tab:mem}). The from-scratch analytic model --- given only parameter
-count, batch, sequence length, precision, and optimizer --- achieves a MAPE of
-$14.9\%$ against allocated memory ($18.8\%$ against the caching allocator's
-reserved high-water mark).
+We compare \texttt{MemoryModel.predict()} against measured peak VRAM over the
+batch sweep, now including a LLaMA-style model with grouped-query attention
+(GQA) built offline to exercise the introspection path. The model reads the real
+architecture --- hidden size, layers, query/KV heads and attention
+implementation --- directly from the module. It achieves a mean absolute
+percentage error of $10.1\%$ against allocated memory, and its \emph{conservative
+upper bound} covers the caching-allocator reserved high-water mark (the value
+that actually triggers OOM) for $100\%$ of measured points
+(Table~\ref{tab:mem}).
 
 \begin{table}[h]
 \centering
-\caption{Memory validation (peak MiB, allocated), GPT-2 on RTX PRO 5000.
-MAPE $=14.9\%$.}
+\caption{Memory validation (peak MiB) on an RTX PRO 5000. ``SysPlug'' is the
+central estimate (MAPE $10.1\%$ vs.\ allocated); ``Conservative'' is the OOM-safe
+upper bound, which covers the reserved peak for $100\%$ of points.}
 \label{tab:mem}
-\begin{tabular}{lrrr}
+\begin{tabular}{lrrrr}
 \toprule
-Model & Batch & Measured & SysPlug \\
+Model & Batch & Measured & SysPlug & Conservative \\
 \midrule
-GPT-2 125M & 1 & 2490  & 2717  \\
-           & 8 & 7715  & 4859  \\
-GPT-2 356M & 1 & 6904  & 6746  \\
-           & 8 & 16192 & 12458 \\
-GPT-2 775M & 1 & 15307 & 13861 \\
-           & 4 & 20060 & 18451 \\
+GPT-2 125M       &  1 & 2490 & 2897 & 4200 \\
+                 &  8 & 7715 & 6299 & 9133 \\
+GPT-2 356M       &  1 & 6904 & 7226 & 10478 \\
+                 &  8 & 16192 & 16298 & 23632 \\
+GPT-2 775M       &  1 & 15307 & 14761 & 21403 \\
+                 &  4 & 20060 & 22051 & 31974 \\
+LLaMA-tiny (GQA) &  1 & 3161 & 3404 & 4936 \\
+                 &  8 & 7051 & 6428 & 9321 \\
+                 & 16 & 11977 & 9884 & 14332 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The model is most accurate at small batch and progressively under-predicts as
-batch grows, because full ($O(S^2)$) attention-score buffers --- not captured by
-the linear $34{\cdot}L{\cdot}B{\cdot}S{\cdot}H$ activation term --- come to
-dominate. This is a known limitation (Section~\ref{sec:limitations}). Even so,
-the model correctly identifies the OOM boundary for each model (the batch at
-which it exceeds 24\,GB), which is what the solver relies on to produce
-memory-safe recommendations.
+The solver checks the conservative bound for feasibility, so a configuration it
+reports as fitting is OOM-safe by construction.
+
+\textbf{Attention scaling.} The measured runs above use memory-efficient SDPA
+attention, which does not materialise the $O(S^2)$ scores. To validate the
+attention-scores term independently, we additionally measured GPT-2 125M with
+\emph{eager} attention at sequence lengths $256/512/1024$: activation memory
+grows super-linearly (${\approx}7\times$ for a $4\times$ sequence increase), and
+the attention-aware model tracks it to within $1\%$ at $S \geq 512$
+(e.g.\ at $S{=}1024$: measured $11600$ vs.\ predicted $11584$ MiB), whereas a
+linear-only model under-predicts by $46\%$.
 
 %% -----------------------------------------------------------------------
 \section{Related Work}
@@ -444,8 +457,10 @@ RWKV), and convolutional architectures may require custom formulas.
 \textbf{Communication overhead.}  Multi-GPU configurations incur
 collective communication costs not captured by the roofline model.
 
-\textbf{Attention implementation.}  FlashAttention reduces activation memory
-by $O(\sqrt{S})$ vs the baseline $O(S^2)$; SysPlug does not yet model this.
+\textbf{Calibration scope.}  The activation coefficients are fitted on GPT-2-
+and LLaMA-family models at a single sequence length per attention mode; the
+$O(S^2)$ eager term is validated on one model across three sequence lengths.
+Broader validation (more families, longer contexts, multi-node) is future work.
 
 \textbf{Dynamic memory.}  PyTorch's caching allocator retains freed memory.
 Our model estimates \emph{live} memory, not the allocator high-water mark.

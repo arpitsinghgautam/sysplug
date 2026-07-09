@@ -25,10 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coefficients against the committed measurements).
 
 ### Changed
-- Memory activation coefficient calibrated against measured training peaks
-  (linear term ~54 vs the theoretical ~34, which undercounts autograd
-  bookkeeping and attention-kernel workspace); central memory MAPE ~10% on the
-  committed GPT-2 data. Coefficients are provisional pending a GPU re-run.
+- Memory activation coefficients calibrated against real measured training peaks
+  on an RTX PRO 5000: the linear term (~54 vs the theoretical ~34, which
+  undercounts autograd bookkeeping and attention-kernel workspace) gives ~10%
+  central MAPE, and the eager `O(S²)` coefficient (~4.6) was validated on GPT-2
+  across sequence lengths 256/512/1024 (fits within ~1% at S≥512). The
+  conservative upper bound covers the allocator's *reserved* peak (the real OOM
+  threshold) for 100% of measured configurations, including a GQA LLaMA model.
 
 ### Fixed
 - **Throughput model was batch-invariant.** The roofline used

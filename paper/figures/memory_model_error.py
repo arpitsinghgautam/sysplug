@@ -73,7 +73,10 @@ def main() -> None:
     ax.set_xticks(range(len(err)))
     ax.set_xticklabels(labels, fontsize=6, rotation=0)
     ax.set_ylabel("Prediction error (%)")
-    ax.set_title("Signed error per (model, batch)\n(under-predicts at large batch)", fontsize=9)
+    ax.set_title(
+        "Signed error per (model, batch)\n(calibrated; conservative upper covers 100%)",
+        fontsize=9,
+    )
     ax.legend(fontsize=8)
 
     plt.tight_layout()

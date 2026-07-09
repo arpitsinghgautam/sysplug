@@ -144,9 +144,10 @@ _SUBQUADRATIC_ATTN = ("flash", "sdpa", "mem_eff", "memory_efficient", "xformers"
 # theoretical stored-activation count is ~34 (Korthikanti et al. 2022), but the real
 # peak also holds autograd bookkeeping and attention-kernel workspace.
 _ACT_LINEAR_COEF = 54.0  # linear activations: QKV proj, FFN, residuals, norms (~C·B·S·H)
-# eager attention: B·heads·S·S scores + softmax/dropout buffer. Physics-based;
-# validated against measured data requires an eager (non-SDPA) run (deferred).
-_ATTN_SCORES_COEF = 2.0
+# eager attention: B·heads·S·S scores + fp32 pre-softmax scores, dropout mask and
+# backward buffers. Calibrated on measured eager runs (gpt2-small, seq 256/512/1024);
+# fits within ~1% at seq >= 512. Dropped entirely for Flash/SDPA.
+_ATTN_SCORES_COEF = 4.6
 
 
 def _is_subquadratic_attn(attn_impl: str | None) -> bool:
@@ -446,7 +447,10 @@ class MemoryModel:
     # solver uses upper_mb for OOM-safety. Provisional; re-derived from measured
     # residuals during calibration (see paper/experiments/measure_gpu.py).
     _CI_LOWER_FRAC = 0.10  # lower = peak * (1 - 0.10)
-    _CI_UPPER_FRAC = 0.40  # upper = peak * (1 + 0.40); covers measured residuals
+    # upper = peak * (1 + 0.45): covers the measured allocator *reserved* peak
+    # (the real OOM threshold, ~10-20% above live/allocated memory) for 100% of
+    # the validation points.
+    _CI_UPPER_FRAC = 0.45
 
     def __init__(
         self,

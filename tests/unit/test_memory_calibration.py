@@ -38,12 +38,17 @@ def _predict(mm: MemoryModel, data: dict, m: dict) -> object:
         sequence_length=data["seq_len"],
         hidden_dim=m["hidden_size"],
         num_layers=m["num_layers"],
-        attn_impl=_MEASURED_ATTN,
+        num_heads=m.get("num_heads"),
+        attn_impl=m.get("attn_impl", _MEASURED_ATTN),
     )
 
 
 def test_conservative_upper_bound_covers_measured() -> None:
-    """The OOM-safe upper bound must cover every measured peak (the (b) promise)."""
+    """The OOM-safe upper bound must cover every measured RESERVED peak.
+
+    Reserved (the caching-allocator high-water mark) is what actually triggers
+    OOM, so the (b) promise is checked against it, not just live/allocated bytes.
+    """
     data, ok = _ok_points()
     mm = MemoryModel(gpu_count=1)
     uncovered = [
@@ -51,10 +56,10 @@ def test_conservative_upper_bound_covers_measured() -> None:
             m["config"],
             m["batch_size"],
             round(_predict(mm, data, m).upper_mb),
-            m["peak_mib_allocated"],
+            m["peak_mib_reserved"],
         )
         for m in ok
-        if _predict(mm, data, m).upper_mb < m["peak_mib_allocated"]
+        if _predict(mm, data, m).upper_mb < m["peak_mib_reserved"]
     ]
     assert not uncovered, f"conservative upper bound under-covered points: {uncovered}"
 

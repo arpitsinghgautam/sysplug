@@ -65,8 +65,14 @@ class Measurement:
     error: str = ""
 
 
-def _build_model(cfg_name: str, vocab_size: int = 50257) -> torch.nn.Module:
-    """Build a random-init model of the named size (no download)."""
+def _build_model(
+    cfg_name: str, vocab_size: int = 50257, attn_impl: str | None = None
+) -> torch.nn.Module:
+    """Build a random-init model of the named size (no download).
+
+    ``attn_impl`` forces the attention implementation (e.g. "eager" or "sdpa");
+    if None, the model's default is used.
+    """
     c = _CONFIGS[cfg_name]
     if cfg_name.startswith("llama"):
         from transformers import LlamaConfig, LlamaForCausalLM
@@ -80,6 +86,8 @@ def _build_model(cfg_name: str, vocab_size: int = 50257) -> torch.nn.Module:
             intermediate_size=c["hidden"] * 3,
             max_position_embeddings=2048,
         )
+        if attn_impl:
+            config._attn_implementation = attn_impl
         return LlamaForCausalLM(config)
 
     from transformers import GPT2Config, GPT2LMHeadModel
@@ -91,6 +99,8 @@ def _build_model(cfg_name: str, vocab_size: int = 50257) -> torch.nn.Module:
         n_layer=c["n_layer"],
         n_head=c["n_head"],
     )
+    if attn_impl:
+        config._attn_implementation = attn_impl
     return GPT2LMHeadModel(config)
 
 
@@ -110,10 +120,11 @@ def _measure_one(
     precision: str,
     device: torch.device,
     seed: int,
+    attn_impl: str | None = None,
 ) -> Measurement:
     """Run a real training loop and measure throughput + peak memory."""
     torch.manual_seed(seed)
-    model = _build_model(cfg_name).to(device)
+    model = _build_model(cfg_name, attn_impl=attn_impl).to(device)
     model.train()
     # Introspect the real architecture the same way the library does at runtime.
     arch = resolve_model_arch(model)
@@ -199,6 +210,7 @@ def run(
     precision: str,
     seed: int,
     mem_fraction: float = 0.9,
+    attn_impl: str | None = None,
 ) -> dict:
     device = torch.device("cuda")
     # Cap the caching allocator so an over-budget config raises a clean
@@ -212,7 +224,7 @@ def run(
 
     for cfg in configs:
         for bs in batch_sizes:
-            m = _measure_one(cfg, bs, seq_len, steps, precision, device, seed)
+            m = _measure_one(cfg, bs, seq_len, steps, precision, device, seed, attn_impl)
             status = (
                 f"{m.samples_per_sec:8.1f} samp/s  {m.peak_mib_reserved:8.0f} MiB  "
                 f"{m.achieved_tflops:6.1f} TFLOPS"
@@ -347,6 +359,12 @@ def main() -> None:
         help="Cap the CUDA allocator to this fraction of total VRAM "
         "so over-budget configs OOM cleanly (avoids WDDM spill).",
     )
+    ap.add_argument(
+        "--attn",
+        default=None,
+        choices=["eager", "sdpa", "flash_attention_2"],
+        help="Force the attention implementation (default: model's own default).",
+    )
     ap.add_argument("--out", default="results/gpu_measurements.json")
     args = ap.parse_args()
 
@@ -370,6 +388,7 @@ def main() -> None:
         args.precision,
         args.seed,
         args.mem_fraction,
+        args.attn,
     )
     summary = _compare_and_calibrate(results)
     results["comparison"] = summary
