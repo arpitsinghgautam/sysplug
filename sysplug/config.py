@@ -57,6 +57,8 @@ class SysPlugConfig:
 
     # Predicted performance
     predicted_peak_memory_mb: float = 0.0
+    # Conservative upper bound (OOM-safe): the solver guarantees this fits.
+    predicted_peak_memory_upper_mb: float = 0.0
     predicted_throughput_samples_per_sec: float = 0.0
     safety_margin_pct: float = 0.85
 
@@ -94,6 +96,7 @@ class SysPlugConfig:
             "parallelism": self.parallelism,
             "use_gradient_checkpointing": self.use_gradient_checkpointing,
             "predicted_peak_memory_mb": self.predicted_peak_memory_mb,
+            "predicted_peak_memory_upper_mb": self.predicted_peak_memory_upper_mb,
             "predicted_throughput_samples_per_sec": self.predicted_throughput_samples_per_sec,
             "safety_margin_pct": self.safety_margin_pct,
             "warnings": list(self.warnings),
@@ -261,6 +264,7 @@ class SysPlugConfig:
             ("parallelism", self.parallelism),
             ("gradient_checkpointing", str(self.use_gradient_checkpointing)),
             ("pred. peak memory (MB)", f"{self.predicted_peak_memory_mb:.1f}"),
+            ("pred. peak, conservative (MB)", f"{self.predicted_peak_memory_upper_mb:.1f}"),
             ("pred. throughput (samp/s)", f"{self.predicted_throughput_samples_per_sec:.1f}"),
             ("safety margin", f"{self.safety_margin_pct * 100:.0f}%"),
             ("training_type", self.training_type),

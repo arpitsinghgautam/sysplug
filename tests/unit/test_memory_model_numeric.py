@@ -408,15 +408,29 @@ class TestTotalMemory:
         )
         assert math.isclose(est.peak_memory_mb, est.breakdown.total_mb * 1.25, rel_tol=1e-9)
 
-    def test_confidence_interval_width(self) -> None:
-        """CI half-width = 15% of peak_memory_mb."""
+    def test_confidence_band_asymmetric(self) -> None:
+        """Band is asymmetric: a wide conservative upper, a narrow lower."""
         model = MemoryModel(gpu_count=1)
         est = model.predict(
             GPT2_PARAMS, batch_size=4, precision="bf16", optimizer="adamw", parallelism="none"
         )
-        half = est.peak_memory_mb * 0.15
-        assert math.isclose(est.upper_mb - est.peak_memory_mb, half, rel_tol=1e-9)
-        assert math.isclose(est.peak_memory_mb - est.lower_mb, half, rel_tol=1e-9)
+        assert math.isclose(
+            est.upper_mb - est.peak_memory_mb,
+            est.peak_memory_mb * model._ci_upper_frac,
+            rel_tol=1e-9,
+        )
+        assert math.isclose(
+            est.peak_memory_mb - est.lower_mb,
+            est.peak_memory_mb * model._ci_lower_frac,
+            rel_tol=1e-9,
+        )
+        assert est.upper_mb > est.peak_memory_mb > est.lower_mb
+
+    def test_ci_fracs_overridable(self) -> None:
+        model = MemoryModel(gpu_count=1, ci_lower_frac=0.05, ci_upper_frac=0.25)
+        est = model.predict(GPT2_PARAMS, batch_size=1, precision="bf16", optimizer="adamw")
+        assert math.isclose(est.upper_mb, est.peak_memory_mb * 1.25, rel_tol=1e-9)
+        assert math.isclose(est.lower_mb, est.peak_memory_mb * 0.95, rel_tol=1e-9)
 
     def test_lower_bound_non_negative(self) -> None:
         """Lower CI bound must never be negative."""

@@ -270,14 +270,16 @@ class Advisor:
                 else:
                     reason[key] = "adjusted by solver to maintain feasibility"
 
-        # Check feasibility
+        # Check feasibility against the CONSERVATIVE upper bound (matches the
+        # solver), so what_if().feasible means "this really fits".
         if self._hardware.gpus:
             available_mb = self._hardware.gpus[0].total_memory_mb
         else:
             available_mb = float("inf")
-        feasible = new_cfg.predicted_peak_memory_mb <= (
-            available_mb * self._constraints.memory_safety_factor
+        conservative_peak = (
+            new_cfg.predicted_peak_memory_upper_mb or new_cfg.predicted_peak_memory_mb
         )
+        feasible = conservative_peak <= (available_mb * self._constraints.memory_safety_factor)
 
         return WhatIfResult(
             new_config=new_cfg,

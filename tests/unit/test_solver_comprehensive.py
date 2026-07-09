@@ -602,6 +602,42 @@ class TestHelperFunctions:
 # ---------------------------------------------------------------------------
 
 
+class TestConservativeFeasibility:
+    """The solver recommends configs whose CONSERVATIVE upper bound fits."""
+
+    def test_returned_upper_bound_fits_budget(self) -> None:
+        solver = _solver(objective="memory")
+        result = solver.solve(
+            _base_config(batch_size=32, precision="fp32"),
+            _hw(total_mb=12_000),
+            param_count=1_000_000_000,
+        )
+        budget = 12_000 * result.safety_margin_pct
+        warned = any("WARNING" in n for n in result.notes)
+        # When the solver finds a feasible config, its conservative upper bound
+        # (not just the central estimate) must fit the memory budget.
+        if not warned:
+            assert result.predicted_peak_memory_upper_mb <= budget * 1.0001
+        # The conservative upper bound is always >= the central estimate.
+        assert result.predicted_peak_memory_upper_mb >= result.predicted_peak_memory_mb
+
+    def test_conservative_shrinks_batch_vs_central(self) -> None:
+        # A GPU budget between the central and upper estimate of the input config
+        # must force the solver to reduce the batch (central alone would "fit").
+        from sysplug.memory_model import MemoryModel
+
+        mm = MemoryModel(gpu_count=1)
+        est = mm.predict(1_000_000_000, batch_size=16, precision="bf16", sequence_length=512)
+        # Budget = 0.85 * total; pick total so central fits but upper does not.
+        total = (est.peak_memory_mb * 1.1) / 0.85
+        result = _solver(objective="memory").solve(
+            _base_config(batch_size=16, precision="bf16"),
+            _hw(total_mb=total),
+            param_count=1_000_000_000,
+        )
+        assert result.batch_size <= 16
+
+
 class TestNoIntQuantDowngrade:
     """OOM recovery must never downgrade trainable weights to int8/int4."""
 

@@ -391,8 +391,9 @@ class MemoryEstimate:
 
     Attributes:
         peak_memory_mb: Central estimate of peak memory in MiB.
-        lower_mb: Lower bound of the 90% confidence interval.
-        upper_mb: Upper bound of the 90% confidence interval.
+        lower_mb: Lower bound of the confidence band.
+        upper_mb: Conservative upper bound; the solver uses this for OOM-safe
+            feasibility ("if it fits, it fits").
         breakdown: Per-component memory breakdown.
         gpu_count: Number of GPUs assumed in the estimate.
         calibration_factor: Correction factor applied (1.0 = uncalibrated).
@@ -436,18 +437,26 @@ class MemoryModel:
         True
     """
 
-    # Confidence interval half-widths (empirically derived)
-    _CI_HALF_WIDTH_FACTOR = 0.15  # ±15% at 90% confidence
+    # Asymmetric confidence band. The upper margin is deliberately wide so the
+    # upper bound covers the residual (mostly upward) prediction error — the
+    # solver uses upper_mb for OOM-safety. Provisional; re-derived from measured
+    # residuals during calibration (see paper/experiments/measure_gpu.py).
+    _CI_LOWER_FRAC = 0.10  # lower = peak * (1 - 0.10)
+    _CI_UPPER_FRAC = 0.50  # upper = peak * (1 + 0.50)
 
     def __init__(
         self,
         gpu_count: int = 1,
         calibration_factor: float = 1.0,
+        ci_lower_frac: float | None = None,
+        ci_upper_frac: float | None = None,
     ) -> None:
         if gpu_count < 1:
             raise ValueError(f"gpu_count must be >= 1, got {gpu_count}")
         self._gpu_count = gpu_count
         self._calibration_factor = calibration_factor
+        self._ci_lower_frac = self._CI_LOWER_FRAC if ci_lower_frac is None else ci_lower_frac
+        self._ci_upper_frac = self._CI_UPPER_FRAC if ci_upper_frac is None else ci_upper_frac
 
     def predict_from_name(
         self,
@@ -696,12 +705,11 @@ class MemoryModel:
 
         raw_total = breakdown.total_mb
         calibrated = raw_total * self._calibration_factor
-        half = calibrated * self._CI_HALF_WIDTH_FACTOR
 
         return MemoryEstimate(
             peak_memory_mb=calibrated,
-            lower_mb=max(0.0, calibrated - half),
-            upper_mb=calibrated + half,
+            lower_mb=max(0.0, calibrated * (1.0 - self._ci_lower_frac)),
+            upper_mb=calibrated * (1.0 + self._ci_upper_frac),
             breakdown=breakdown,
             gpu_count=self._gpu_count,
             calibration_factor=self._calibration_factor,

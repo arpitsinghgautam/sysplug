@@ -242,6 +242,7 @@ class ConfigSolver:
             parallelism=cfg["parallelism"],
             use_gradient_checkpointing=cfg["use_gradient_checkpointing"],
             predicted_peak_memory_mb=mem_est.peak_memory_mb,
+            predicted_peak_memory_upper_mb=mem_est.upper_mb,
             predicted_throughput_samples_per_sec=tput_est.samples_per_sec,
             safety_margin_pct=self._constraints.memory_safety_factor,
             warnings=warnings,
@@ -280,7 +281,7 @@ class ConfigSolver:
                 use_gradient_checkpointing=c["use_gradient_checkpointing"],
                 sequence_length=sequence_length,
             )
-            return est.peak_memory_mb
+            return est.upper_mb  # conservative: recommend configs whose upper bound fits
 
         # Try gradient checkpointing first (preserves throughput better)
         if (
@@ -368,7 +369,7 @@ class ConfigSolver:
                 use_gradient_checkpointing=c["use_gradient_checkpointing"],
                 sequence_length=sequence_length,
             )
-            return est.peak_memory_mb
+            return est.upper_mb  # conservative: recommend configs whose upper bound fits
 
         # Upgrade precision if possible (fp16 → bf16 is numerically safer)
         if "precision" not in locked and c["precision"] in _PRECISION_UPGRADE:
