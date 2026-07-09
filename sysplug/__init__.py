@@ -21,7 +21,7 @@ Quick start::
 from sysplug.advisor import Advisor, WhatIfResult
 from sysplug.config import SysPlugConfig
 from sysplug.hardware import GPUSnapshot, HardwareProfiler, HardwareSnapshot
-from sysplug.memory_model import MemoryModel, PrecisionMode
+from sysplug.memory_model import MemoryModel, ModelArch, PrecisionMode, resolve_model_arch
 from sysplug.monitor import Monitor, MonitorEvent
 from sysplug.solver import ConfigSolver, SolverConstraints
 from sysplug.stability import StabilitySignal
@@ -35,6 +35,8 @@ __all__ = [
     "HardwareSnapshot",
     "GPUSnapshot",
     "MemoryModel",
+    "ModelArch",
+    "resolve_model_arch",
     "PrecisionMode",
     "Monitor",
     "MonitorEvent",

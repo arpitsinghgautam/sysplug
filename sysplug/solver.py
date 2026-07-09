@@ -26,7 +26,7 @@ from typing import Any
 
 from sysplug.config import SysPlugConfig
 from sysplug.hardware import HardwareSnapshot
-from sysplug.memory_model import MemoryModel
+from sysplug.memory_model import MemoryModel, ModelArch
 from sysplug.throughput_model import ThroughputModel
 from sysplug.utils.scaling_rules import (
     linear_lr_scale,
@@ -131,6 +131,7 @@ class ConfigSolver:
         hardware: HardwareSnapshot,
         param_count: int,
         sequence_length: int = 512,
+        model_arch: ModelArch | None = None,
         locked_params: dict[str, Any] | None = None,
     ) -> SysPlugConfig:
         """Produce a feasible, optimised :class:`SysPlugConfig`.
@@ -176,7 +177,7 @@ class ConfigSolver:
         # Step 1: Feasibility check → OOM recovery
         # ------------------------------------------------------------------
         cfg, oom_notes = self._ensure_feasible(
-            cfg, available_mb, param_count, gpu_count, sequence_length, locked
+            cfg, available_mb, param_count, gpu_count, sequence_length, locked, model_arch
         )
         notes.extend(oom_notes)
 
@@ -185,7 +186,7 @@ class ConfigSolver:
         # ------------------------------------------------------------------
         if self._objective in {"throughput", "balanced"}:
             cfg, tput_notes = self._improve_throughput(
-                cfg, available_mb, param_count, gpu_count, sequence_length, locked
+                cfg, available_mb, param_count, gpu_count, sequence_length, locked, model_arch
             )
             notes.extend(tput_notes)
 
@@ -223,6 +224,7 @@ class ConfigSolver:
             parallelism=cfg["parallelism"],
             use_gradient_checkpointing=cfg["use_gradient_checkpointing"],
             sequence_length=sequence_length,
+            arch=model_arch,
         )
 
         tput_est = self._tput_model.predict(
@@ -230,6 +232,8 @@ class ConfigSolver:
             model_size_params=param_count,
             precision=cfg["precision"],
             sequence_length=sequence_length,
+            hidden_size=model_arch.hidden_size if model_arch else None,
+            num_layers=model_arch.num_layers if model_arch else None,
         )
 
         return SysPlugConfig(
@@ -266,6 +270,7 @@ class ConfigSolver:
         gpu_count: int,
         sequence_length: int,
         locked: set[str],
+        model_arch: ModelArch | None = None,
     ) -> tuple[dict[str, Any], list[str]]:
         """Reduce batch/precision until memory fits within budget."""
         notes: list[str] = []
@@ -280,6 +285,7 @@ class ConfigSolver:
                 parallelism=c["parallelism"],
                 use_gradient_checkpointing=c["use_gradient_checkpointing"],
                 sequence_length=sequence_length,
+                arch=model_arch,
             )
             return est.upper_mb  # conservative: recommend configs whose upper bound fits
 
@@ -354,6 +360,7 @@ class ConfigSolver:
         gpu_count: int,
         sequence_length: int,
         locked: set[str],
+        model_arch: ModelArch | None = None,
     ) -> tuple[dict[str, Any], list[str]]:
         """Try to increase throughput while staying within memory budget."""
         notes: list[str] = []
@@ -368,6 +375,7 @@ class ConfigSolver:
                 parallelism=c["parallelism"],
                 use_gradient_checkpointing=c["use_gradient_checkpointing"],
                 sequence_length=sequence_length,
+                arch=model_arch,
             )
             return est.upper_mb  # conservative: recommend configs whose upper bound fits
 

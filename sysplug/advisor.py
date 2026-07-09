@@ -26,7 +26,7 @@ from typing import Any
 
 from sysplug.config import SysPlugConfig
 from sysplug.hardware import HardwareProfiler, HardwareSnapshot
-from sysplug.memory_model import MemoryModel, _params_from_name
+from sysplug.memory_model import MemoryModel, _params_from_name, resolve_model_arch
 from sysplug.monitor import Monitor
 from sysplug.solver import ConfigSolver, SolverConstraints
 from sysplug.throughput_model import ThroughputModel
@@ -101,8 +101,12 @@ class Advisor:
         self._objective = objective
         self._console = get_console(verbose=verbose)
 
-        # Parameter count
-        self._param_count = self._resolve_param_count(model)
+        # Architecture: introspect the real model (HuggingFace config) when
+        # possible, so memory/throughput use the true hidden/layers/heads/attn
+        # instead of guessing from the parameter count. Only the compact
+        # ModelArch is retained (the nn.Module is not held).
+        self._arch = resolve_model_arch(model)
+        self._param_count = self._arch.param_count
 
         # GPU name for throughput model
         gpu_name = "A100"  # default; overridden after hardware snapshot
@@ -182,6 +186,7 @@ class Advisor:
             hardware=self._hardware,
             param_count=self._param_count,
             sequence_length=seq_len,
+            model_arch=self._arch,
         )
 
         self._current_config = cfg
@@ -253,6 +258,7 @@ class Advisor:
             hardware=self._hardware,
             param_count=self._param_count,
             sequence_length=seq_len,
+            model_arch=self._arch,
             locked_params={k: solver_config[k] for k in locked if k in solver_config},
         )
 
